@@ -7,7 +7,7 @@ const XeroOAuthService = require("../src/auth/oauth/xero/service");
 const config = {
   clientId: "client-id",
   clientSecret: "client-secret",
-  redirectUri: "http://localhost:3000/api/v1/auth/xero/callback",
+  redirectUri: "http://localhost:3000/auth/xero/callback",
   scopes: ["offline_access", "accounting.contacts"],
   authorizationUrl: "https://login.xero.com/identity/connect/authorize",
   tokenUrl: "https://identity.xero.com/connect/token",

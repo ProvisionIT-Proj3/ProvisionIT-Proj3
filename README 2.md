@@ -24,9 +24,9 @@ allowlist. Configure these environment variables before starting the API:
 ```powershell
 $env:XERO_CLIENT_ID = "your-client-id"
 $env:XERO_CLIENT_SECRET = "your-client-secret"
-$env:XERO_REDIRECT_URI = "http://localhost:3000/api/v1/auth/xero/callback"
+$env:XERO_REDIRECT_URI = "http://localhost:3000/auth/xero/callback"
 # Optional: overrides the minimum default scopes
-$env:XERO_SCOPES = "offline_access accounting.contacts accounting.transactions app.connections"
+$env:XERO_SCOPES = "offline_access accounting.contacts.read accounting.invoices.read accounting.payments.read"
 ```
 
 Start the flow at `GET /api/v1/auth/xero/connect`. After consent, the callback exchanges
