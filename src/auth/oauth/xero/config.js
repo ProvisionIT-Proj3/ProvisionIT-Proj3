@@ -1,8 +1,8 @@
 const DEFAULT_SCOPES = [
   "offline_access",
-  "accounting.contacts",
-  "accounting.transactions",
-  "app.connections",
+  "accounting.contacts.read",
+  "accounting.invoices.read",
+  "accounting.payments.read",
 ];
 
 function getXeroConfig() {

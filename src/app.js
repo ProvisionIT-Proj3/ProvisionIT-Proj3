@@ -7,6 +7,8 @@ app.use(express.json());
 
 app.use("/api/v1", apiRoutes);
 app.use("/api/v1/auth", authRoutes);
+// Xero's registered callback currently uses this non-versioned path.
+app.use("/auth", authRoutes);
 
 // Standard error format for all failures (FR-12: handle & log failures)
 app.use((err, req, res, next) => {
