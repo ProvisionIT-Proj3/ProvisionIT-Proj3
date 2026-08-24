@@ -15,6 +15,28 @@ node src/app.js
 ```
 Then try: http://localhost:3000/api/v1/customers
 
+## Xero OAuth 2.0
+
+The Xero connection uses the server-side OAuth 2.0 authorization-code flow. Create a
+Xero **Web app** with the Auth Code grant and add the callback URL to its redirect-URI
+allowlist. Configure these environment variables before starting the API:
+
+```powershell
+$env:XERO_CLIENT_ID = "your-client-id"
+$env:XERO_CLIENT_SECRET = "your-client-secret"
+$env:XERO_REDIRECT_URI = "http://localhost:3000/api/v1/auth/xero/callback"
+# Optional: overrides the minimum default scopes
+$env:XERO_SCOPES = "offline_access accounting.contacts accounting.transactions app.connections"
+```
+
+Start the flow at `GET /api/v1/auth/xero/connect`. After consent, the callback exchanges
+the code and discovers the authorised organisations. `GET /api/v1/auth/xero/connections`
+returns their non-sensitive metadata.
+
+Tokens and OAuth state are currently stored only in process memory; connections disappear
+when the API restarts. Replace `src/auth/oauth/xero/connectionStore.js` with encrypted
+durable storage before using this outside local development.
+
 ## Status
 Mock data only. Waiting on:
 - Canonical field confirmation from Chris
