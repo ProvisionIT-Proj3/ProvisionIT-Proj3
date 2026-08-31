@@ -34,8 +34,10 @@ the code and discovers the authorised organisations. `GET /api/v1/auth/xero/conn
 returns their non-sensitive metadata.
 
 Tokens and OAuth state are currently stored only in process memory; connections disappear
-when the API restarts. Replace `src/auth/oauth/xero/connectionStore.js` with encrypted
+when the API restarts. Replace `src/auth/xero/connectionStore.js` with encrypted
 durable storage before using this outside local development.
+
+For the connector and database hand-off contract, see `src/auth/xero/README.md`.
 
 ## Status
 Mock data only. Waiting on:

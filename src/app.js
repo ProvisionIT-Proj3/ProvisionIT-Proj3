@@ -1,6 +1,6 @@
 const express = require("express");
 const apiRoutes = require("./routes/api");
-const authRoutes = require("./auth/oauth/xero/router");
+const { router: authRoutes } = require("./auth/xero");
 
 const app = express();
 app.use(express.json());
@@ -19,11 +19,6 @@ app.use((err, req, res, next) => {
       message: err.message || "Something went wrong.",
     },
   });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Middleware API running on http://localhost:${PORT}`);
 });
 
 module.exports = app;
