@@ -31,8 +31,23 @@ router.get("/xero/callback", async (req, res, next) => {
   }
 });
 
-router.get("/xero/connections", (req, res) => {
-  res.json({ data: xeroOAuth.listConnections() });
+router.get("/xero/connections", async (req, res, next) => {
+  try {
+    res.json({ data: await xeroOAuth.listConnections() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/xero/connections/:connectionId", async (req, res, next) => {
+  try {
+    assertXeroConfigured(config);
+    await xeroOAuth.disconnect(req.params.connectionId);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;
+module.exports.xeroOAuth = xeroOAuth;

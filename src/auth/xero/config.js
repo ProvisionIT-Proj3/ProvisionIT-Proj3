@@ -34,6 +34,22 @@ function assertXeroConfigured(config) {
     err.code = "OAUTH_NOT_CONFIGURED";
     throw err;
   }
+
+  try {
+    const redirectUrl = new URL(config.redirectUri);
+    if (redirectUrl.protocol !== "https:" && redirectUrl.hostname !== "localhost") {
+      const err = new Error("XERO_REDIRECT_URI must use HTTPS, except for localhost development.");
+      err.status = 500;
+      err.code = "INVALID_OAUTH_CONFIGURATION";
+      throw err;
+    }
+  } catch (error) {
+    if (error.code === "INVALID_OAUTH_CONFIGURATION") throw error;
+    const err = new Error("XERO_REDIRECT_URI must be an absolute URL.");
+    err.status = 500;
+    err.code = "INVALID_OAUTH_CONFIGURATION";
+    throw err;
+  }
 }
 
 module.exports = { getXeroConfig, assertXeroConfigured };
