@@ -1,3 +1,7 @@
+sed -i '' '1i\
+require("dotenv").config();
+' src/app.js
+
 const express = require("express");
 const apiRoutes = require("./routes/api");
 
