@@ -3,28 +3,28 @@ const router = express.Router();
 const dataService = require("../services/dataService");
 
 // All routes are read-only GET endpoints, per FR-10.
-// Company scoping (connectionId) will be added once the team confirms
-// the approach (see open question in API design doc).
+// Company scoping uses a connectionId query param for now (temporary,
+// pending team decision — see API design doc open item 1).
 
-router.get("/customers", (req, res, next) => {
+router.get("/customers", async (req, res, next) => {
   try {
-    res.json(dataService.getCustomers(req.query));
+    res.json(await dataService.getCustomers(req.query));
   } catch (err) {
     next(err);
   }
 });
 
-router.get("/invoices", (req, res, next) => {
+router.get("/invoices", async (req, res, next) => {
   try {
-    res.json(dataService.getInvoices(req.query));
+    res.json(await dataService.getInvoices(req.query));
   } catch (err) {
     next(err);
   }
 });
 
-router.get("/payments", (req, res, next) => {
+router.get("/payments", async (req, res, next) => {
   try {
-    res.json(dataService.getPayments(req.query));
+    res.json(await dataService.getPayments(req.query));
   } catch (err) {
     next(err);
   }
