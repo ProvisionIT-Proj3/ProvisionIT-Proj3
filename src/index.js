@@ -48,7 +48,6 @@ function mapToCanonical(vendor, entityType, raw) {
 
   const canonical = vendorMappers[entityType](raw);
   if (!canonical) {
-    // e.g. Xero ACCPAY invoice filtered out, or a non-customer Xero contact
     return { canonical: null, validation: null };
   }
 

@@ -7,15 +7,18 @@
  *   node transform.js [inputDir] [outputFile]
  *
  * Defaults:
- *   inputDir   = ./sample_data/xero
+ *   inputDir   = ./sample-data/xero-export
  *   outputFile = ./output/canonical-output.json
  *
+ * inputDir must contain any of: contacts.json, invoices.json, payments.json
+ * (missing files are treated as empty — you can run this against a partial
+ * export, e.g. just invoices.json).
  */
 const fs = require('fs');
 const path = require('path');
 const { mapToCanonical } = require('./src/index');
 
-const inputDir = process.argv[2] || path.join(__dirname, 'sample-data', 'xero');
+const inputDir = process.argv[2] || path.join(__dirname, 'sample-data', 'xero-export');
 const outputFile = process.argv[3] || path.join(__dirname, 'output', 'canonical-output.json');
 
 function loadJsonArray(filePath) {

@@ -1,0 +1,198 @@
+{
+  "Id": "0b3ee35e-b97c-4b3c-b7e2-9a465233e329",
+  "Status": "OK",
+  "ProviderName": "Provision IT Middleware PoC",
+  "DateTimeUTC": "/Date(1788307200000)/",
+  "Reports": [
+    {
+      "ReportName": "Trial Balance",
+      "ReportType": "TrialBalance",
+      "ReportTitles": ["Trial Balance", "Harbourview Holdings Pty Ltd", "As at 30 June 2026"],
+      "ReportDate": "30 June 2026",
+      "UpdatedDateUTC": "/Date(1788307200000)/",
+      "Fields": [],
+      "Rows": [
+        {
+          "RowType": "Header",
+          "Cells": [
+            { "Value": "Account" },
+            { "Value": "Debit" },
+            { "Value": "Credit" },
+            { "Value": "YTD Debit" },
+            { "Value": "YTD Credit" }
+          ]
+        },
+        {
+          "RowType": "Section",
+          "Title": "Assets",
+          "Rows": [
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Business Bank Account", "Attributes": [{ "Id": "account", "Value": "acc-001" }] },
+                { "Value": "15420.50", "Attributes": [{ "Id": "account", "Value": "acc-001" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-001" }] },
+                { "Value": "15420.50", "Attributes": [{ "Id": "account", "Value": "acc-001" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-001" }] }
+              ]
+            },
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Accounts Receivable", "Attributes": [{ "Id": "account", "Value": "acc-002" }] },
+                { "Value": "8200.00", "Attributes": [{ "Id": "account", "Value": "acc-002" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-002" }] },
+                { "Value": "8200.00", "Attributes": [{ "Id": "account", "Value": "acc-002" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-002" }] }
+              ]
+            },
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Office Equipment", "Attributes": [{ "Id": "account", "Value": "acc-003" }] },
+                { "Value": "3200.00", "Attributes": [{ "Id": "account", "Value": "acc-003" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-003" }] },
+                { "Value": "3200.00", "Attributes": [{ "Id": "account", "Value": "acc-003" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-003" }] }
+              ]
+            },
+            {
+              "RowType": "SummaryRow",
+              "Cells": [
+                { "Value": "Total Assets" },
+                { "Value": "26820.50" },
+                { "Value": "" },
+                { "Value": "26820.50" },
+                { "Value": "" }
+              ]
+            }
+          ]
+        },
+        {
+          "RowType": "Section",
+          "Title": "Liabilities",
+          "Rows": [
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Accounts Payable", "Attributes": [{ "Id": "account", "Value": "acc-004" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-004" }] },
+                { "Value": "4100.00", "Attributes": [{ "Id": "account", "Value": "acc-004" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-004" }] },
+                { "Value": "4100.00", "Attributes": [{ "Id": "account", "Value": "acc-004" }] }
+              ]
+            },
+            {
+              "RowType": "SummaryRow",
+              "Cells": [
+                { "Value": "Total Liabilities" },
+                { "Value": "" },
+                { "Value": "4100.00" },
+                { "Value": "" },
+                { "Value": "4100.00" }
+              ]
+            }
+          ]
+        },
+        {
+          "RowType": "Section",
+          "Title": "Equity",
+          "Rows": [
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Owner's Equity", "Attributes": [{ "Id": "account", "Value": "acc-005" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-005" }] },
+                { "Value": "18000.00", "Attributes": [{ "Id": "account", "Value": "acc-005" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-005" }] },
+                { "Value": "18000.00", "Attributes": [{ "Id": "account", "Value": "acc-005" }] }
+              ]
+            },
+            {
+              "RowType": "SummaryRow",
+              "Cells": [
+                { "Value": "Total Equity" },
+                { "Value": "" },
+                { "Value": "18000.00" },
+                { "Value": "" },
+                { "Value": "18000.00" }
+              ]
+            }
+          ]
+        },
+        {
+          "RowType": "Section",
+          "Title": "Revenue",
+          "Rows": [
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Sales", "Attributes": [{ "Id": "account", "Value": "acc-006" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-006" }] },
+                { "Value": "42000.00", "Attributes": [{ "Id": "account", "Value": "acc-006" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-006" }] },
+                { "Value": "42000.00", "Attributes": [{ "Id": "account", "Value": "acc-006" }] }
+              ]
+            },
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Interest Income", "Attributes": [{ "Id": "account", "Value": "acc-009" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-009" }] },
+                { "Value": "320.50", "Attributes": [{ "Id": "account", "Value": "acc-009" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-009" }] },
+                { "Value": "320.50", "Attributes": [{ "Id": "account", "Value": "acc-009" }] }
+              ]
+            },
+            {
+              "RowType": "SummaryRow",
+              "Cells": [
+                { "Value": "Total Revenue" },
+                { "Value": "" },
+                { "Value": "42320.50" },
+                { "Value": "" },
+                { "Value": "42320.50" }
+              ]
+            }
+          ]
+        },
+        {
+          "RowType": "Section",
+          "Title": "Expenses",
+          "Rows": [
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Cost of Goods Sold", "Attributes": [{ "Id": "account", "Value": "acc-007" }] },
+                { "Value": "21000.00", "Attributes": [{ "Id": "account", "Value": "acc-007" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-007" }] },
+                { "Value": "21000.00", "Attributes": [{ "Id": "account", "Value": "acc-007" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-007" }] }
+              ]
+            },
+            {
+              "RowType": "Row",
+              "Cells": [
+                { "Value": "Rent Expense", "Attributes": [{ "Id": "account", "Value": "acc-008" }] },
+                { "Value": "16600.00", "Attributes": [{ "Id": "account", "Value": "acc-008" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-008" }] },
+                { "Value": "16600.00", "Attributes": [{ "Id": "account", "Value": "acc-008" }] },
+                { "Value": "", "Attributes": [{ "Id": "account", "Value": "acc-008" }] }
+              ]
+            },
+            {
+              "RowType": "SummaryRow",
+              "Cells": [
+                { "Value": "Total Expenses" },
+                { "Value": "37600.00" },
+                { "Value": "" },
+                { "Value": "37600.00" },
+                { "Value": "" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
