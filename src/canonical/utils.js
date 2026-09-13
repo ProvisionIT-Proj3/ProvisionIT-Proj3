@@ -15,7 +15,7 @@ function toMoney(value) {
 function toISODate(value) {
   if (!value) return undefined;
 
-
+  // MYOB/older Microsoft-style JSON dates: "/Date(1716000000000+1000)/"
   const msDateMatch = typeof value === 'string' && value.match(/\/Date\((\d+)([+-]\d+)?\)\//);
   if (msDateMatch) {
     return new Date(Number(msDateMatch[1])).toISOString().slice(0, 10);

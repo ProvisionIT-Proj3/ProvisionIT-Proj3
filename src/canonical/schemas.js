@@ -1,10 +1,4 @@
-/**
- * Canonical entity schemas for the Provision IT accounting middleware PoC.
- * 
- * Each schema lists the
- * canonical fields, whether they're required, and a one-line description —
- * this mirrors the "Canonical Field" columns in the Mapping Register.
- */
+
 
 const CUSTOMER_SCHEMA = {
   id: { required: true, description: 'Vendor-native identifier for the customer record' },
@@ -49,10 +43,25 @@ const PAYMENT_SCHEMA = {
   updatedAt: { required: false, description: 'Canonical last-modified timestamp (UTC ISO 8601)' },
 };
 
+
+const ACCOUNT_SCHEMA = {
+  id: { required: true, description: 'Vendor-native identifier for the account (or a synthetic id for a header row)' },
+  sourceSystem: { required: true, description: "Origin platform: 'xero' | 'myob' | 'quickbooks'" },
+  code: { required: false, description: "Account # — the account's code (blank for synthesized header rows)" },
+  name: { required: true, description: 'Account — the account or section name' },
+  type: { required: false, description: 'Type — specific account type/class (e.g. Bank, Cost of Sales)' },
+  drCr: { required: false, description: "Dr/Cr — normal balance side, 'Dr' or 'Cr'" },
+  isHeader: { required: true, description: 'Header/Detail — true for a grouping/section row, false for a postable account' },
+  level: { required: true, description: 'Level — depth in the account hierarchy (1 = header/section, 2 = detail account)' },
+  value: { required: false, description: 'Value — the balance for the reporting period' },
+  taxCode: { required: false, description: "Tax Code — default tax code for the account" },
+};
+
 const SCHEMAS = {
   customer: CUSTOMER_SCHEMA,
   invoice: INVOICE_SCHEMA,
   payment: PAYMENT_SCHEMA,
+  account: ACCOUNT_SCHEMA,
 };
 
 /**
@@ -76,4 +85,4 @@ function validate(entityName, obj) {
   return { valid: errors.length === 0, errors };
 }
 
-module.exports = { SCHEMAS, CUSTOMER_SCHEMA, INVOICE_SCHEMA, PAYMENT_SCHEMA, validate };
+module.exports = { SCHEMAS, CUSTOMER_SCHEMA, INVOICE_SCHEMA, PAYMENT_SCHEMA, ACCOUNT_SCHEMA, validate };
