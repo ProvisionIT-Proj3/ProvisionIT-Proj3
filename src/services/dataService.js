@@ -32,6 +32,7 @@ function paginate(items, query) {
 function getCustomers(query) {
   return paginate(store.customers, query);
 }
+function getAccounts(query) { return paginate(store.accounts, query); }
 
 function getInvoices(query) {
   return paginate(store.invoices, query);
@@ -41,4 +42,4 @@ function getPayments(query) {
   return paginate(store.payments, query);
 }
 
-module.exports = { getCustomers, getInvoices, getPayments };
+module.exports = { getCustomers, getInvoices, getPayments, getAccounts };

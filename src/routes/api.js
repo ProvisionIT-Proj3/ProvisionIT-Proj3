@@ -30,4 +30,8 @@ router.get("/payments", (req, res, next) => {
   }
 });
 
+router.get("/accounts", (req, res, next) => {
+  try { res.json(dataService.getAccounts(req.query)); } catch (err) { next(err); }
+});
+
 module.exports = router;

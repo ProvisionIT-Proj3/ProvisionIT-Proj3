@@ -17,4 +17,12 @@ const payments = [
   { id: "pay_5001", invoiceId: "inv_1001", date: "2026-05-14", amount: 1100.00 },
 ];
 
-module.exports = { customers, invoices, payments };
+// Canonical Account rows (header + detail), matching Chris's ACCOUNT_SCHEMA.
+const accounts = [
+  { id: "header:Bank", sourceSystem: "xero", code: "HDR-1", name: "Bank", type: "Bank", drCr: "Dr", isHeader: true, level: 1, value: 25000.0, taxCode: null },
+  { id: "acc_090", sourceSystem: "xero", code: "090", name: "Business Bank Account", type: "Bank", drCr: "Dr", isHeader: false, level: 2, value: 25000.0, taxCode: "N-T" },
+  { id: "header:Revenue", sourceSystem: "xero", code: "HDR-2", name: "Revenue", type: "Revenue", drCr: "Cr", isHeader: true, level: 1, value: 40000.0, taxCode: null },
+  { id: "acc_200", sourceSystem: "xero", code: "200", name: "Sales", type: "Revenue", drCr: "Cr", isHeader: false, level: 2, value: 40000.0, taxCode: "GST" },
+];
+
+module.exports = { customers, invoices, payments, accounts };
