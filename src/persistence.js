@@ -116,8 +116,11 @@ async function getInvoicesByConnection(connectionId, filters = {}) {
   const pageSize = Math.min(filters.pageSize || 25, 100);
   const offset = (page - 1) * pageSize;
 
+  // customer_source_id added: invoices.customer_id is our internal PK, but the
+  // canonical Invoice.customerId must reference the vendor-native Customer.id
+  // (customers.source_id). Additive only — existing callers are unaffected.
   const query = `
-    SELECT i.*, c.name AS customer_name
+    SELECT i.*, c.name AS customer_name, c.source_id AS customer_source_id
     FROM invoices i
     JOIN customers c ON c.customer_id = i.customer_id
     WHERE ${conditions.join(' AND ')}
@@ -160,8 +163,12 @@ async function getPaymentsByConnection(connectionId, filters = {}) {
   const pageSize = Math.min(filters.pageSize || 25, 100);
   const offset = (page - 1) * pageSize;
 
+  // i.type added so the middleware can derive canonical Payment.direction
+  // (sales invoice -> receivable, bill -> payable).
+  // c.source_id added so canonical Payment.partyId references the vendor-native
+  // Customer.id rather than our internal PK. Both additive.
   const result = await pool.query(
-    `SELECT p.*, i.customer_id
+    `SELECT p.*, i.customer_id, i.type, c.source_id AS customer_source_id
      FROM payments p
      JOIN invoices i ON i.invoice_id = p.invoice_id
      JOIN customers c ON c.customer_id = i.customer_id

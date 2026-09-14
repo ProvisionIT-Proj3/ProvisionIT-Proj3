@@ -30,8 +30,12 @@ router.get("/payments", async (req, res, next) => {
   }
 });
 
-router.get("/accounts", (req, res, next) => {
-  try { res.json(dataService.getAccounts(req.query)); } catch (err) { next(err); }
+router.get("/accounts", async (req, res, next) => {
+  try {
+    res.json(await dataService.getAccounts(req.query));
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

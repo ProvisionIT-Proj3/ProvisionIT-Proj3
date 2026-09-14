@@ -1,8 +1,14 @@
 const persistence = require("../persistence"); // Giorgio's DB functions
+const { toCanonicalList, deriveDirection } = require("./Canonicalmapper");
 
-// Middle layer: validates request params, applies pagination,
-// and wraps results in the standard response shape.
-// Now backed by the real database instead of mockStore.
+// Middle layer: validates request params, handles pagination, converts DB rows
+// to Chris's canonical schema, and wraps results in the standard response shape.
+//
+// Pagination is NOT uniform across the persistence layer, so each function
+// below matches what its query actually does:
+//   getCustomersByConnection  returns all rows  -> paginate here
+//   getInvoicesByConnection   LIMIT/OFFSET + COUNT -> trust its pagination
+//   getPaymentsByConnection   LIMIT/OFFSET, no count -> do NOT slice again
 
 function validatePagination(query) {
   const page = query.page !== undefined ? parseInt(query.page) : 1;
@@ -28,7 +34,7 @@ function requireConnectionId(query) {
   return query.connectionId;
 }
 
-// Converts snake_case DB rows to camelCase for the API response
+// Casing only. Canonical field RENAMES happen in canonicalMapper.
 function toCamelCase(row) {
   const out = {};
   for (const key in row) {
@@ -38,22 +44,48 @@ function toCamelCase(row) {
   return out;
 }
 
+function buildPagination(page, pageSize, totalItems) {
+  return { page, pageSize, totalItems, totalPages: Math.ceil(totalItems / pageSize) };
+}
+
+// Clear 501 instead of "persistence.x is not a function" when a data source
+// has not been built yet.
+function requirePersistence(fnName) {
+  if (typeof persistence[fnName] !== "function") {
+    const err = new Error(`Data source not available: persistence.${fnName} is not implemented.`);
+    err.status = 501;
+    throw err;
+  }
+  return persistence[fnName];
+}
+
+// canonical sourceSystem is required on every entity, but the entity tables
+// don't carry it. It lives on connections.platform, so fetch it once per
+// request and stamp it on. Remove this if the SELECTs start joining it in.
+async function resolveSourceSystem(connectionId) {
+  const connection = await requirePersistence("getConnectionById")(connectionId);
+  if (!connection) {
+    const err = new Error(`Unknown connectionId: ${connectionId}`);
+    err.status = 404;
+    throw err;
+  }
+  return { sourceSystem: connection.platform };
+}
+
 async function getCustomers(query) {
   const connectionId = requireConnectionId(query);
   const { page, pageSize } = validatePagination(query);
-  const rows = await persistence.getCustomersByConnection(connectionId);
 
+  const extra = await resolveSourceSystem(connectionId);
+  const rows = await requirePersistence("getCustomersByConnection")(connectionId);
+
+  // This query returns every row, so paginate in the service layer.
   const start = (page - 1) * pageSize;
   const paged = rows.slice(start, start + pageSize).map(toCamelCase);
 
   return {
-    data: paged,
-    pagination: {
-      page,
-      pageSize,
-      totalItems: rows.length,
-      totalPages: Math.ceil(rows.length / pageSize),
-    },
+    data: toCanonicalList("customer", paged, extra),
+    pagination: buildPagination(page, pageSize, rows.length),
   };
 }
 
@@ -61,7 +93,8 @@ async function getInvoices(query) {
   const connectionId = requireConnectionId(query);
   const { page, pageSize } = validatePagination(query);
 
-  const result = await persistence.getInvoicesByConnection(connectionId, {
+  const extra = await resolveSourceSystem(connectionId);
+  const result = await requirePersistence("getInvoicesByConnection")(connectionId, {
     status: query.status,
     search: query.search,
     fromDate: query.fromDate,
@@ -70,29 +103,55 @@ async function getInvoices(query) {
     pageSize,
   });
 
+  // Already paginated in SQL, with a real COUNT. Do not slice again.
   return {
-    data: result.data.map(toCamelCase),
-    pagination: {
-      ...result.pagination,
-      totalPages: Math.ceil(result.pagination.totalItems / pageSize),
-    },
+    data: toCanonicalList("invoice", result.data.map(toCamelCase), extra),
+    pagination: buildPagination(page, pageSize, result.pagination.totalItems),
   };
 }
-function getAccounts(query) { return paginate(store.accounts, query); }
 
 async function getPayments(query) {
   const connectionId = requireConnectionId(query);
   const { page, pageSize } = validatePagination(query);
-  const rows = await persistence.getPaymentsByConnection(connectionId, { page, pageSize });
+
+  const extra = await resolveSourceSystem(connectionId);
+  const rows = await requirePersistence("getPaymentsByConnection")(connectionId, { page, pageSize });
+
+  // Already LIMIT/OFFSET in SQL, so these are page rows, not all rows.
+  const mapped = rows.map((row) => {
+    const camel = toCamelCase(row);
+    // canonical Payment.direction has no column. It is derivable from the
+    // invoice type, but the payments query does not currently SELECT i.type,
+    // so this stays undefined until that column is returned.
+    return { ...camel, direction: deriveDirection(camel.type) };
+  });
 
   return {
-    data: rows.map(toCamelCase),
-    pagination: {
-      page,
-      pageSize,
-      totalItems: rows.length, // NOTE: not a true total count yet — persistence layer would need a count query added, same pattern as getInvoicesByConnection
-      totalPages: Math.ceil(rows.length / pageSize),
-    },
+    data: toCanonicalList("payment", mapped, extra),
+    // totalItems is the page length, not a true total: this query has no
+    // COUNT, unlike getInvoicesByConnection.
+    pagination: buildPagination(page, pageSize, rows.length),
+  };
+}
+
+async function getAccounts(query) {
+  const connectionId = requireConnectionId(query);
+  const { page, pageSize } = validatePagination(query);
+
+  // There is no accounts table in the database and no getAccountsByConnection
+  // in the persistence layer, so this returns 501 until both exist.
+  // Checked before any DB call so the 501 is reported rather than a
+  // connection error from resolveSourceSystem.
+  const getAccountsByConnection = requirePersistence("getAccountsByConnection");
+  const extra = await resolveSourceSystem(connectionId);
+  const rows = await getAccountsByConnection(connectionId);
+
+  const start = (page - 1) * pageSize;
+  const paged = rows.slice(start, start + pageSize).map(toCamelCase);
+
+  return {
+    data: toCanonicalList("account", paged, extra),
+    pagination: buildPagination(page, pageSize, rows.length),
   };
 }
 
