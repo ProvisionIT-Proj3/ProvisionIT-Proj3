@@ -1,4 +1,3 @@
-cat > src/app.js << 'EOF'
 require("dotenv").config();
 
 const express = require("express");
@@ -22,4 +21,3 @@ app.listen(PORT, () => {
   console.log(`Middleware API running on http://localhost:${PORT}`);
 });
 module.exports = app;
-EOF
