@@ -1,7 +1,13 @@
 const { validate } = require("../canonical/schemas");
+const { toUtcTimestamp, toISODate, toMoney } = require("../canonical/utils");
 
 // Maps Giorgio's database columns (already camelCased) onto Chris's canonical
 // field names in src/canonical/schemas.js.
+//
+// This is the READ path: stored row -> canonical response. Chris's
+// src/mappers/<vendor>/ handle the WRITE path (vendor API -> canonical) and
+// run before anything is persisted. Both are needed because the database
+// stores its own column names, not canonical ones.
 //
 // Every column name here was read from the SQL in src/persistence.js.
 // Primary keys are per-table (customer_id, invoice_id, payment_id), not `id`.
@@ -22,8 +28,22 @@ const FIELD_MAPS = {
     method: "paymentType",
     customerSourceId: "partyId",
   },
-  // No accounts table exists in the database.
+  // Accounts are not stored as an entity table. They are built by Chris's
+  // buildXeroAccounts() from GET /Accounts plus GET /Reports/TrialBalance,
+  // and already come out in canonical shape, so no renaming is needed here.
   account: {},
+};
+
+// Normalisation applied per canonical field, reusing Chris's shared helpers so
+// date and money handling stays identical across the read and write paths.
+const NORMALISERS = {
+  updatedAt: toUtcTimestamp,
+  transactionDate: toISODate,
+  dueDate: toISODate,
+  date: toISODate,
+  total: toMoney,
+  amount: toMoney,
+  value: toMoney,
 };
 
 // Internal primary/foreign keys. These must not reach the API: they are
@@ -32,8 +52,6 @@ const FIELD_MAPS = {
 // customerId is dropped deliberately. persistence.js joins on
 // c.customer_id = i.customer_id, so that column is our internal PK, whereas
 // canonical customerId/partyId must reference Customer.id (= source_id).
-// Until the SELECTs also return c.source_id AS customer_source_id, these
-// references are unavailable and validate() will report them as missing.
 const DROP_FIELDS = new Set([
   "customerId",
   "invoiceId",
@@ -51,7 +69,7 @@ function deriveDirection(invoiceType) {
 }
 
 /**
- * Rename one camelCased DB row to canonical field names.
+ * Rename one camelCased DB row to canonical field names and normalise values.
  * @param {object} [extra] fields stamped onto every row, e.g. sourceSystem
  */
 function toCanonical(entity, row, extra = {}) {
@@ -60,7 +78,10 @@ function toCanonical(entity, row, extra = {}) {
 
   for (const key of Object.keys(row)) {
     if (DROP_FIELDS.has(key)) continue;
-    out[map[key] || key] = row[key];
+
+    const canonicalKey = map[key] || key;
+    const normalise = NORMALISERS[canonicalKey];
+    out[canonicalKey] = normalise ? normalise(row[key]) : row[key];
   }
 
   return { ...out, ...extra };

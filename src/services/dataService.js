@@ -1,5 +1,5 @@
 const persistence = require("../persistence"); // Giorgio's DB functions
-const { toCanonicalList, deriveDirection } = require("./Canonicalmapper");
+const { toCanonicalList, deriveDirection } = require("./canonicalMapper");
 
 // Middle layer: validates request params, handles pagination, converts DB rows
 // to Chris's canonical schema, and wraps results in the standard response shape.
@@ -34,7 +34,8 @@ function requireConnectionId(query) {
   return query.connectionId;
 }
 
-// Casing only. Canonical field RENAMES happen in canonicalMapper.
+// Casing only. Canonical field renames and value normalisation happen in
+// canonicalMapper, which reuses Chris's src/canonical/utils.js helpers.
 function toCamelCase(row) {
   const out = {};
   for (const key in row) {
@@ -138,10 +139,17 @@ async function getAccounts(query) {
   const connectionId = requireConnectionId(query);
   const { page, pageSize } = validatePagination(query);
 
-  // There is no accounts table in the database and no getAccountsByConnection
-  // in the persistence layer, so this returns 501 until both exist.
-  // Checked before any DB call so the 501 is reported rather than a
-  // connection error from resolveSourceSystem.
+  // Accounts are NOT a stored entity like customers/invoices/payments. Chris's
+  // buildXeroAccounts() assembles them from two Xero calls (GET /Accounts for
+  // dimension data, GET /Reports/TrialBalance for balances and hierarchy), and
+  // header rows are synthesised per report section.
+  //
+  // So this endpoint has no data source yet: the team still needs to decide
+  // whether the assembled report is persisted (and read here like the others)
+  // or requested from the connector on demand. Until that lands, 501.
+  //
+  // Availability is checked before any DB call so the 501 is what surfaces,
+  // rather than a connection error from resolveSourceSystem.
   const getAccountsByConnection = requirePersistence("getAccountsByConnection");
   const extra = await resolveSourceSystem(connectionId);
   const rows = await getAccountsByConnection(connectionId);
