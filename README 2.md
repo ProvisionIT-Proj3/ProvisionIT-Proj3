@@ -37,8 +37,6 @@ Tokens and OAuth state are currently stored only in process memory; connections 
 when the API restarts. Replace `src/auth/xero/connectionStore.js` with encrypted
 durable storage before using this outside local development.
 
-For the connector and database hand-off contract, see `src/auth/xero/README.md`.
-
 ## Status
 Mock data only. Waiting on:
 - Canonical field confirmation from Chris

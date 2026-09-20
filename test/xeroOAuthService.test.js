@@ -1,8 +1,15 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const OAuthStateStore = require("../src/auth/xero/stateStore");
-const XeroConnectionStore = require("../src/auth/xero/connectionStore");
+const TestMemoryXeroConnectionStore = require("../src/auth/xero/testMemoryConnectionStore");
 const XeroOAuthService = require("../src/auth/xero/service");
+const TokenCipher = require("../src/auth/xero/tokenCipher");
+
+function createConnectionStore() {
+  return new TestMemoryXeroConnectionStore({
+    tokenCipher: new TokenCipher({ key: Buffer.alloc(32, 7), keyVersion: "test" }),
+  });
+}
 
 const config = {
   clientId: "client-id",
@@ -16,7 +23,7 @@ const config = {
 
 test("creates an Xero authorization URL with an opaque state", () => {
   const stateStore = new OAuthStateStore();
-  const service = new XeroOAuthService({ config, stateStore, connectionStore: new XeroConnectionStore() });
+  const service = new XeroOAuthService({ config, stateStore, connectionStore: createConnectionStore() });
 
   const url = new URL(service.getAuthorizationUrl());
   assert.equal(url.searchParams.get("response_type"), "code");
@@ -31,7 +38,7 @@ test("exchanges a verified code and stores only connection metadata for reads", 
   const service = new XeroOAuthService({
     config,
     stateStore,
-    connectionStore: new XeroConnectionStore(),
+    connectionStore: createConnectionStore(),
     fetchImpl: async (url, options) => {
       calls.push({ url, options });
       if (url === config.tokenUrl) {
@@ -52,7 +59,7 @@ test("exchanges a verified code and stores only connection metadata for reads", 
 });
 
 test("refreshes an expiring token before returning connector headers", async () => {
-  const store = new XeroConnectionStore();
+  const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
     tenantId: "tenant-1",
@@ -79,7 +86,7 @@ test("refreshes an expiring token before returning connector headers", async () 
 });
 
 test("adds Xero credentials to connector requests without exposing them via the store list", async () => {
-  const store = new XeroConnectionStore();
+  const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
     tenantId: "tenant-1",
@@ -105,7 +112,7 @@ test("adds Xero credentials to connector requests without exposing them via the 
 });
 
 test("disconnects the Xero connection and removes its local credential record", async () => {
-  const store = new XeroConnectionStore();
+  const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
     tenantId: "tenant-1",
@@ -129,9 +136,73 @@ test("disconnects the Xero connection and removes its local credential record", 
 });
 
 test("rejects a callback whose state is unknown or has already been consumed", async () => {
-  const service = new XeroOAuthService({ config, stateStore: new OAuthStateStore(), connectionStore: new XeroConnectionStore() });
+  const service = new XeroOAuthService({ config, stateStore: new OAuthStateStore(), connectionStore: createConnectionStore() });
   await assert.rejects(
     service.completeAuthorization({ code: "code", state: "unknown" }),
     { code: "INVALID_OAUTH_STATE", status: 400 },
   );
+});
+
+test("marks a connection for reauthorization when Xero rejects its refresh token", async () => {
+  const store = createConnectionStore();
+  await store.save({
+    connectionId: "connection-1",
+    tenantId: "tenant-1",
+    accessToken: "expired-access",
+    refreshToken: "expired-refresh",
+    expiresAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  let refreshCalls = 0;
+  const service = new XeroOAuthService({
+    config,
+    stateStore: new OAuthStateStore(),
+    connectionStore: store,
+    fetchImpl: async () => {
+      refreshCalls += 1;
+      return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
+    },
+  });
+
+  await assert.rejects(
+    service.getAuthorizationHeaders("connection-1"),
+    { code: "XERO_REAUTHORIZATION_REQUIRED", status: 401 },
+  );
+  const connection = await store.getByConnectionId("connection-1");
+  assert.equal(connection.status, "reauthorization_required");
+  assert.equal(connection.accessToken, null);
+  assert.equal(connection.refreshToken, null);
+
+  await assert.rejects(
+    service.getAuthorizationHeaders("connection-1"),
+    { code: "XERO_REAUTHORIZATION_REQUIRED", status: 401 },
+  );
+  assert.equal(refreshCalls, 1);
+});
+
+test("keeps a connection retryable when Xero has a temporary token endpoint failure", async () => {
+  const store = createConnectionStore();
+  await store.save({
+    connectionId: "connection-1",
+    tenantId: "tenant-1",
+    accessToken: "expired-access",
+    refreshToken: "valid-refresh",
+    expiresAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  const service = new XeroOAuthService({
+    config,
+    stateStore: new OAuthStateStore(),
+    connectionStore: store,
+    fetchImpl: async () => new Response(
+      JSON.stringify({ error: "temporarily_unavailable" }),
+      { status: 503 },
+    ),
+  });
+
+  await assert.rejects(
+    service.getAuthorizationHeaders("connection-1"),
+    { code: "XERO_TOKEN_EXCHANGE_FAILED", status: 502 },
+  );
+  const connection = await store.getByConnectionId("connection-1");
+  assert.notEqual(connection.status, "reauthorization_required");
+  assert.equal(connection.refreshToken, "valid-refresh");
 });

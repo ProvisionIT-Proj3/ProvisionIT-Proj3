@@ -1,7 +1,7 @@
 const express = require("express");
 const { getXeroConfig, assertXeroConfigured } = require("./config");
 const OAuthStateStore = require("./stateStore");
-const XeroConnectionStore = require("./connectionStore");
+const TestMemoryXeroConnectionStore = require("./testMemoryConnectionStore");
 const XeroOAuthService = require("./service");
 
 const router = express.Router();
@@ -9,7 +9,9 @@ const config = getXeroConfig();
 const xeroOAuth = new XeroOAuthService({
   config,
   stateStore: new OAuthStateStore(),
-  connectionStore: new XeroConnectionStore(),
+  // Durable storage will be wired after the database owner finalises the
+  // provider-neutral connection contract.
+  connectionStore: new TestMemoryXeroConnectionStore(),
 });
 
 router.get("/xero/connect", (req, res, next) => {

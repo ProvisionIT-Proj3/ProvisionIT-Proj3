@@ -10,6 +10,7 @@ function getXeroConfig() {
     clientId: process.env.XERO_CLIENT_ID,
     clientSecret: process.env.XERO_CLIENT_SECRET,
     redirectUri: process.env.XERO_REDIRECT_URI,
+    tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
     scopes: (process.env.XERO_SCOPES || DEFAULT_SCOPES.join(" "))
       .split(/\s+/)
       .filter(Boolean),
@@ -24,6 +25,7 @@ function assertXeroConfigured(config) {
     ["XERO_CLIENT_ID", config.clientId],
     ["XERO_CLIENT_SECRET", config.clientSecret],
     ["XERO_REDIRECT_URI", config.redirectUri],
+    ["TOKEN_ENCRYPTION_KEY", config.tokenEncryptionKey],
   ]
     .filter(([, value]) => !value)
     .map(([name]) => name);

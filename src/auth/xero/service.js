@@ -8,7 +8,11 @@ function createHttpError(message, status, code) {
 async function readResponse(response, code = "XERO_OAUTH_FAILED") {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw createHttpError("Xero rejected the OAuth request.", 502, code);
+    const error = createHttpError("Xero rejected the OAuth request.", 502, code);
+    // Keep the OAuth error type for server-side handling without exposing the
+    // complete upstream response or any credential values.
+    error.oauthError = typeof body.error === "string" ? body.error : null;
+    throw error;
   }
   return body;
 }
@@ -114,15 +118,38 @@ class XeroOAuthService {
   async getValidConnection(connectionId) {
     const connection = await this.connectionStore.getByConnectionId(connectionId);
     if (!connection) throw createHttpError("Xero connection was not found.", 404, "XERO_CONNECTION_NOT_FOUND");
+    if (connection.status === "reauthorization_required") {
+      throw createHttpError(
+        "Xero connection needs to be authorised again.",
+        401,
+        "XERO_REAUTHORIZATION_REQUIRED",
+      );
+    }
     if (new Date(connection.expiresAt).getTime() > Date.now() + this.refreshSkewMs) return connection;
     if (!connection.refreshToken) {
       throw createHttpError("Xero connection needs to be authorised again.", 401, "XERO_REAUTHORIZATION_REQUIRED");
     }
 
-    const tokens = await this.exchangeToken({
-      grant_type: "refresh_token",
-      refresh_token: connection.refreshToken,
-    });
+    let tokens;
+    try {
+      tokens = await this.exchangeToken({
+        grant_type: "refresh_token",
+        refresh_token: connection.refreshToken,
+      });
+    } catch (error) {
+      if (
+        error.code === "XERO_TOKEN_EXCHANGE_FAILED"
+        && ["invalid_grant", "invalid_token"].includes(error.oauthError)
+      ) {
+        await this.connectionStore.markReauthorizationRequired(connectionId);
+        throw createHttpError(
+          "Xero connection needs to be authorised again.",
+          401,
+          "XERO_REAUTHORIZATION_REQUIRED",
+        );
+      }
+      throw error;
+    }
     return this.connectionStore.updateTokens(connectionId, {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
