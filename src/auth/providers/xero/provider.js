@@ -53,14 +53,14 @@ class XeroProvider {
     return this.exchangeToken({ grant_type: "refresh_token", refresh_token: refreshToken }, fetchImpl);
   }
 
-  async discoverAccounts(accessToken, fetchImpl) {
+  async discoverAccounts({ tokens, fetchImpl }) {
     const response = await fetchImpl(this.config.connectionsUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     const tenants = await readResponse(response, "XERO_CONNECTIONS_FAILED", "Xero rejected the connections request.");
     if (!Array.isArray(tenants)) return [];
     return tenants.map((tenant) => ({
-      connectionId: tenant.id || tenant.tenantId,
+      externalConnectionId: tenant.id || tenant.tenantId,
       providerAccountId: tenant.tenantId,
       accountName: tenant.tenantName,
       metadata: { tenantType: tenant.tenantType },
@@ -78,14 +78,20 @@ class XeroProvider {
   }
 
   buildApiUrl(path) {
-    if (typeof path !== "string" || !path || /^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith("//")) {
+    if (
+      typeof path !== "string"
+      || !path
+      || /^[a-z][a-z\d+.-]*:/i.test(path)
+      || path.startsWith("//")
+      || /(^|\/)\.\.(\/|$)/.test(path)
+    ) {
       throw createHttpError("Xero API requests require a relative path.", 400, "INVALID_XERO_API_PATH");
     }
     return new URL(path.replace(/^\/+/, ""), this.config.apiBaseUrl).toString();
   }
 
   async disconnect(connection, fetchImpl) {
-    const response = await fetchImpl(`${this.config.connectionsUrl}/${encodeURIComponent(connection.connectionId)}`, {
+    const response = await fetchImpl(`${this.config.connectionsUrl}/${encodeURIComponent(connection.externalConnectionId)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${connection.accessToken}` },
     });

@@ -11,7 +11,9 @@ function createFakePersistence() {
       const row = {
         connection_id: connection.connectionId,
         platform: connection.provider,
+        external_connection_id: connection.externalConnectionId,
         provider_account_id: connection.providerAccountId,
+        oauth_grant_id: connection.oauthGrantId,
         company_name: connection.accountName,
         provider_metadata: connection.metadata,
         status: "active",
@@ -27,17 +29,22 @@ function createFakePersistence() {
       if (rows.get(connectionId)?.platform !== provider) return null;
       return rows.get(connectionId) || null;
     },
-    async updateOAuthTokens(connectionId, provider, tokens) {
+    async updateOAuthGrantTokens(connectionId, provider, tokens) {
       const row = rows.get(connectionId);
       if (!row || row.platform !== provider) return null;
-      const updated = {
-        ...row,
-        access_token: tokens.accessTokenEncrypted,
-        refresh_token: tokens.refreshTokenEncrypted,
-        token_expires_at: tokens.expiresAt,
-      };
-      rows.set(connectionId, updated);
-      return updated;
+      let requestedRow;
+      for (const [id, candidate] of rows) {
+        if (candidate.oauth_grant_id !== row.oauth_grant_id) continue;
+        const updated = {
+          ...candidate,
+          access_token: tokens.accessTokenEncrypted,
+          refresh_token: tokens.refreshTokenEncrypted,
+          token_expires_at: tokens.expiresAt,
+        };
+        rows.set(id, updated);
+        if (id === connectionId) requestedRow = updated;
+      }
+      return requestedRow;
     },
     async deleteOAuthConnection(connectionId) {
       rows.delete(connectionId);
@@ -47,18 +54,23 @@ function createFakePersistence() {
         .filter((row) => row.platform === provider)
         .map(({ access_token, refresh_token, ...row }) => row);
     },
-    async markOAuthReauthorizationRequired(connectionId, provider) {
+    async markOAuthGrantReauthorizationRequired(connectionId, provider) {
       const row = rows.get(connectionId);
       if (!row || row.platform !== provider) return null;
-      const updated = {
-        ...row,
-        status: "reauthorization_required",
-        token_expires_at: null,
-        access_token: null,
-        refresh_token: null,
-      };
-      rows.set(connectionId, updated);
-      return updated;
+      let requestedRow;
+      for (const [id, candidate] of rows) {
+        if (candidate.oauth_grant_id !== row.oauth_grant_id) continue;
+        const updated = {
+          ...candidate,
+          status: "reauthorization_required",
+          token_expires_at: null,
+          access_token: null,
+          refresh_token: null,
+        };
+        rows.set(id, updated);
+        if (id === connectionId) requestedRow = updated;
+      }
+      return requestedRow;
     },
   };
 }
@@ -74,12 +86,21 @@ function createStore(persistence = createFakePersistence()) {
   };
 }
 
+test("database store reports an incomplete OAuth persistence contract", () => {
+  assert.throws(
+    () => new DatabaseConnectionStore({ provider: "xero", persistence: {} }),
+    /saveOAuthConnection.*updateOAuthGrantTokens.*markOAuthGrantReauthorizationRequired/,
+  );
+});
+
 test("database store persists encrypted token envelopes and decrypts them for OAuth", async () => {
   const { persistence, store } = createStore();
   const saved = await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "xero-connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accountName: "Demo Company",
     metadata: { tenantType: "ORGANISATION" },
     accessToken: "secret-access",
@@ -99,8 +120,22 @@ test("database store replaces encrypted tokens during refresh", async () => {
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "xero-connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accountName: "Demo Company",
+    metadata: { tenantType: "ORGANISATION" },
+    accessToken: "old-access",
+    refreshToken: "old-refresh",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+  });
+  await store.save({
+    connectionId: "connection-2",
+    provider: "xero",
+    externalConnectionId: "xero-connection-2",
+    providerAccountId: "tenant-2",
+    oauthGrantId: "grant-1",
+    accountName: "Second Company",
     metadata: { tenantType: "ORGANISATION" },
     accessToken: "old-access",
     refreshToken: "old-refresh",
@@ -117,6 +152,7 @@ test("database store replaces encrypted tokens during refresh", async () => {
   assert.notEqual(persistence.rows.get("connection-1").access_token, oldCiphertext);
   assert.equal(updated.accessToken, "new-access");
   assert.equal(updated.refreshToken, "new-refresh");
+  assert.equal((await store.getByConnectionId("connection-2")).refreshToken, "new-refresh");
 });
 
 test("database connection listings contain no token fields", async () => {
@@ -124,7 +160,9 @@ test("database connection listings contain no token fields", async () => {
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "xero-connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accountName: "Demo Company",
     metadata: { tenantType: "ORGANISATION" },
     accessToken: "secret-access",
@@ -142,7 +180,9 @@ test("database store clears unusable tokens and marks reauthorization required",
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "xero-connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accountName: "Demo Company",
     metadata: { tenantType: "ORGANISATION" },
     accessToken: "expired-access",

@@ -40,10 +40,12 @@ test("creates an Xero authorization URL with an opaque state", () => {
 test("exchanges a verified code and stores only connection metadata for reads", async () => {
   const stateStore = new OAuthStateStore();
   const calls = [];
+  const ids = ["grant-1", "internal-connection-1"];
   const service = new OAuthService({
     provider,
     stateStore,
     connectionStore: createConnectionStore(),
+    idFactory: () => ids.shift(),
     fetchImpl: async (url, options) => {
       calls.push({ url, options });
       if (url === config.tokenUrl) {
@@ -60,8 +62,9 @@ test("exchanges a verified code and stores only connection metadata for reads", 
   assert.match(calls[0].options.headers.Authorization, /^Basic /);
   assert.equal(calls[1].options.headers.Authorization, "Bearer secret-access");
   assert.deepEqual(connections, [{
-    connectionId: "connection-1",
+    connectionId: "internal-connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
     accountName: "Demo Company",
     metadata: { tenantType: "ORGANISATION" },
@@ -78,7 +81,9 @@ test("refreshes an expiring token before returning connector headers", async () 
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "old-access",
     refreshToken: "old-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
@@ -101,12 +106,54 @@ test("refreshes an expiring token before returning connector headers", async () 
   assert.equal((await store.getByConnectionId("connection-1")).refreshToken, "new-refresh");
 });
 
+test("refreshes a shared Xero grant once and updates every organisation", async () => {
+  const store = createConnectionStore();
+  for (const suffix of ["1", "2"]) {
+    await store.save({
+      connectionId: `connection-${suffix}`,
+      provider: "xero",
+      externalConnectionId: `xero-connection-${suffix}`,
+      providerAccountId: `tenant-${suffix}`,
+      oauthGrantId: "shared-grant",
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+  }
+  let refreshCalls = 0;
+  const service = new OAuthService({
+    provider,
+    stateStore: new OAuthStateStore(),
+    connectionStore: store,
+    fetchImpl: async () => {
+      refreshCalls += 1;
+      return new Response(JSON.stringify({
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        expires_in: 1800,
+      }), { status: 200 });
+    },
+  });
+
+  const [firstHeaders, secondHeaders] = await Promise.all([
+    service.getAuthorizationHeaders("connection-1"),
+    service.getAuthorizationHeaders("connection-2"),
+  ]);
+
+  assert.equal(refreshCalls, 1);
+  assert.equal(firstHeaders["xero-tenant-id"], "tenant-1");
+  assert.equal(secondHeaders["xero-tenant-id"], "tenant-2");
+  assert.equal((await store.getByConnectionId("connection-2")).refreshToken, "new-refresh");
+});
+
 test("adds Xero credentials to connector requests without exposing them via the store list", async () => {
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -128,7 +175,9 @@ test("adds Xero credentials to connector requests without exposing them via the 
   assert.deepEqual(await store.list(), [{
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     expiresAt: stored.expiresAt,
   }]);
 });
@@ -138,7 +187,9 @@ test("disconnects the Xero connection and removes its local credential record", 
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -171,7 +222,9 @@ test("marks a connection for reauthorization when Xero rejects its refresh token
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "expired-access",
     refreshToken: "expired-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
@@ -208,7 +261,9 @@ test("keeps a connection retryable when Xero has a temporary token endpoint fail
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "expired-access",
     refreshToken: "valid-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
@@ -237,7 +292,9 @@ test("rejects absolute connector URLs before sending Xero credentials", async ()
   await store.save({
     connectionId: "connection-1",
     provider: "xero",
+    externalConnectionId: "connection-1",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),

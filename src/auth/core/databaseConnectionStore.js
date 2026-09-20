@@ -1,5 +1,14 @@
 const TokenCipher = require("./tokenCipher");
 
+const REQUIRED_PERSISTENCE_METHODS = [
+  "saveOAuthConnection",
+  "getOAuthConnectionById",
+  "updateOAuthGrantTokens",
+  "deleteOAuthConnection",
+  "listOAuthConnections",
+  "markOAuthGrantReauthorizationRequired",
+];
+
 function toIsoString(value) {
   if (!value) return undefined;
   return value instanceof Date ? value.toISOString() : value;
@@ -15,7 +24,9 @@ function mapDatabaseRow(row) {
   return {
     connectionId: row.connection_id,
     provider: row.platform,
-    providerAccountId: row.provider_account_id,
+    externalConnectionId: row.external_connection_id,
+    providerAccountId: row.external_account_id ?? row.provider_account_id,
+    oauthGrantId: row.oauth_grant_id,
     accountName: row.company_name,
     metadata: parseJson(row.provider_metadata) || {},
     status: row.status,
@@ -30,13 +41,19 @@ class DatabaseConnectionStore {
   constructor({ provider, persistence, tokenCipher } = {}) {
     if (!provider) throw new Error("An OAuth provider id is required.");
     if (!persistence) throw new Error("OAuth database persistence is required.");
+    const missingMethods = REQUIRED_PERSISTENCE_METHODS.filter(
+      (method) => typeof persistence[method] !== "function",
+    );
+    if (missingMethods.length) {
+      throw new Error(`OAuth persistence is missing required methods: ${missingMethods.join(", ")}.`);
+    }
     this.provider = provider;
     this.persistence = persistence;
     this.tokenCipher = tokenCipher || TokenCipher.fromEnvironment();
   }
 
-  tokenContext(connectionId, tokenType) {
-    return `${this.provider}:${connectionId}:${tokenType}`;
+  tokenContext(credentialContextId, tokenType) {
+    return `${this.provider}:${credentialContextId}:${tokenType}`;
   }
 
   encryptToken(connectionId, tokenType, token) {
@@ -50,10 +67,10 @@ class DatabaseConnectionStore {
     return {
       ...connection,
       accessToken: accessTokenEncrypted
-        ? this.tokenCipher.decrypt(accessTokenEncrypted, this.tokenContext(connection.connectionId, "access"))
+        ? this.tokenCipher.decrypt(accessTokenEncrypted, this.tokenContext(connection.oauthGrantId, "access"))
         : null,
       refreshToken: refreshTokenEncrypted
-        ? this.tokenCipher.decrypt(refreshTokenEncrypted, this.tokenContext(connection.connectionId, "refresh"))
+        ? this.tokenCipher.decrypt(refreshTokenEncrypted, this.tokenContext(connection.oauthGrantId, "refresh"))
         : null,
     };
   }
@@ -62,8 +79,8 @@ class DatabaseConnectionStore {
     if (connection.provider !== this.provider) throw new Error("Connection provider does not match its store.");
     const row = await this.persistence.saveOAuthConnection({
       ...connection,
-      accessTokenEncrypted: this.encryptToken(connection.connectionId, "access", connection.accessToken),
-      refreshTokenEncrypted: this.encryptToken(connection.connectionId, "refresh", connection.refreshToken),
+      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", connection.accessToken),
+      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", connection.refreshToken),
     });
     return this.decryptConnection(row);
   }
@@ -73,9 +90,11 @@ class DatabaseConnectionStore {
   }
 
   async updateTokens(connectionId, tokens) {
-    const row = await this.persistence.updateOAuthTokens(connectionId, this.provider, {
-      accessTokenEncrypted: this.encryptToken(connectionId, "access", tokens.accessToken),
-      refreshTokenEncrypted: this.encryptToken(connectionId, "refresh", tokens.refreshToken),
+    const connection = await this.getByConnectionId(connectionId);
+    if (!connection) return null;
+    const row = await this.persistence.updateOAuthGrantTokens(connectionId, this.provider, {
+      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", tokens.accessToken),
+      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", tokens.refreshToken),
       expiresAt: tokens.expiresAt,
     });
     return this.decryptConnection(row);
@@ -87,7 +106,7 @@ class DatabaseConnectionStore {
   }
 
   async markReauthorizationRequired(connectionId) {
-    return this.persistence.markOAuthReauthorizationRequired(connectionId, this.provider);
+    return this.persistence.markOAuthGrantReauthorizationRequired(connectionId, this.provider);
   }
 
   async list() {

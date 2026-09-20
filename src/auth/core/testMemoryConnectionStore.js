@@ -13,8 +13,8 @@ class TestMemoryConnectionStore {
     return this.tokenCipher;
   }
 
-  tokenContext(connectionId, tokenType) {
-    return `${this.provider}:${connectionId}:${tokenType}`;
+  tokenContext(credentialContextId, tokenType) {
+    return `${this.provider}:${credentialContextId}:${tokenType}`;
   }
 
   encryptToken(connectionId, tokenType, token) {
@@ -28,10 +28,10 @@ class TestMemoryConnectionStore {
     return {
       ...connection,
       accessToken: accessTokenEncrypted
-        ? this.getTokenCipher().decrypt(accessTokenEncrypted, this.tokenContext(connection.connectionId, "access"))
+        ? this.getTokenCipher().decrypt(accessTokenEncrypted, this.tokenContext(connection.oauthGrantId, "access"))
         : null,
       refreshToken: refreshTokenEncrypted
-        ? this.getTokenCipher().decrypt(refreshTokenEncrypted, this.tokenContext(connection.connectionId, "refresh"))
+        ? this.getTokenCipher().decrypt(refreshTokenEncrypted, this.tokenContext(connection.oauthGrantId, "refresh"))
         : null,
     };
   }
@@ -41,8 +41,8 @@ class TestMemoryConnectionStore {
     const { accessToken, refreshToken, ...metadata } = connection;
     const stored = {
       ...metadata,
-      accessTokenEncrypted: this.encryptToken(connection.connectionId, "access", accessToken),
-      refreshTokenEncrypted: this.encryptToken(connection.connectionId, "refresh", refreshToken),
+      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", accessToken),
+      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", refreshToken),
     };
     this.connections.set(connection.connectionId, stored);
     return this.decryptConnection(stored);
@@ -56,14 +56,23 @@ class TestMemoryConnectionStore {
     const stored = this.connections.get(connectionId);
     if (!stored) return null;
     const { accessToken, refreshToken, ...metadata } = tokens;
-    const updated = {
-      ...stored,
-      ...metadata,
-      ...(accessToken === undefined ? {} : { accessTokenEncrypted: this.encryptToken(connectionId, "access", accessToken) }),
-      ...(refreshToken === undefined ? {} : { refreshTokenEncrypted: this.encryptToken(connectionId, "refresh", refreshToken) }),
-    };
-    this.connections.set(connectionId, updated);
-    return this.decryptConnection(updated);
+    let requestedConnection;
+    for (const [id, connection] of this.connections) {
+      if (connection.oauthGrantId !== stored.oauthGrantId) continue;
+      const updated = {
+        ...connection,
+        ...metadata,
+        ...(accessToken === undefined ? {} : {
+          accessTokenEncrypted: this.encryptToken(stored.oauthGrantId, "access", accessToken),
+        }),
+        ...(refreshToken === undefined ? {} : {
+          refreshTokenEncrypted: this.encryptToken(stored.oauthGrantId, "refresh", refreshToken),
+        }),
+      };
+      this.connections.set(id, updated);
+      if (id === connectionId) requestedConnection = updated;
+    }
+    return this.decryptConnection(requestedConnection);
   }
 
   async deleteByConnectionId(connectionId) {
@@ -73,15 +82,20 @@ class TestMemoryConnectionStore {
   async markReauthorizationRequired(connectionId) {
     const stored = this.connections.get(connectionId);
     if (!stored) return null;
-    const updated = {
-      ...stored,
-      status: "reauthorization_required",
-      expiresAt: null,
-      accessTokenEncrypted: null,
-      refreshTokenEncrypted: null,
-    };
-    this.connections.set(connectionId, updated);
-    return this.decryptConnection(updated);
+    let requestedConnection;
+    for (const [id, connection] of this.connections) {
+      if (connection.oauthGrantId !== stored.oauthGrantId) continue;
+      const updated = {
+        ...connection,
+        status: "reauthorization_required",
+        expiresAt: null,
+        accessTokenEncrypted: null,
+        refreshTokenEncrypted: null,
+      };
+      this.connections.set(id, updated);
+      if (id === connectionId) requestedConnection = updated;
+    }
+    return this.decryptConnection(requestedConnection);
   }
 
   async list() {

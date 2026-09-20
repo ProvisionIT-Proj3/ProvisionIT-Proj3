@@ -1,21 +1,31 @@
 const { createHttpError } = require("./errors");
+const crypto = require("node:crypto");
 
 function toExpiresAt(expiresIn) {
   return new Date(Date.now() + Number(expiresIn || 0) * 1000).toISOString();
 }
 
 function toPublicConnection(connection) {
-  const { accessToken, refreshToken, ...publicConnection } = connection;
+  const { accessToken, refreshToken, oauthGrantId, ...publicConnection } = connection;
   return publicConnection;
 }
 
 class OAuthService {
-  constructor({ provider, stateStore, connectionStore, fetchImpl = global.fetch, refreshSkewMs = 60_000 }) {
+  constructor({
+    provider,
+    stateStore,
+    connectionStore,
+    fetchImpl = global.fetch,
+    refreshSkewMs = 60_000,
+    idFactory = () => crypto.randomUUID(),
+  }) {
     this.provider = provider;
     this.stateStore = stateStore;
     this.connectionStore = connectionStore;
     this.fetch = fetchImpl;
     this.refreshSkewMs = refreshSkewMs;
+    this.idFactory = idFactory;
+    this.refreshPromises = new Map();
   }
 
   getAuthorizationUrl(metadata = {}) {
@@ -23,7 +33,8 @@ class OAuthService {
     return this.provider.getAuthorizationUrl(state);
   }
 
-  async completeAuthorization({ code, state, error }) {
+  async completeAuthorization(authorization) {
+    const { code, state, error } = authorization;
     const stateRecord = state && this.stateStore.consume(state);
     if (!stateRecord || stateRecord.provider !== this.provider.id) {
       throw createHttpError("Invalid or expired OAuth state.", 400, "INVALID_OAUTH_STATE");
@@ -32,11 +43,18 @@ class OAuthService {
     if (!code) throw createHttpError("The provider did not return an authorization code.", 400, "MISSING_AUTHORIZATION_CODE");
 
     const tokens = await this.provider.exchangeAuthorizationCode(code, this.fetch);
-    const accounts = await this.provider.discoverAccounts(tokens.access_token, this.fetch);
+    const accounts = await this.provider.discoverAccounts({
+      authorization,
+      tokens,
+      fetchImpl: this.fetch,
+    });
     if (!accounts.length) throw this.provider.noAccountsError();
 
+    const oauthGrantId = this.idFactory();
     const saved = await Promise.all(accounts.map((account) => this.connectionStore.save({
       ...account,
+      connectionId: this.idFactory(),
+      oauthGrantId,
       provider: this.provider.id,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
@@ -46,7 +64,7 @@ class OAuthService {
   }
 
   async listConnections() {
-    return this.connectionStore.list();
+    return (await this.connectionStore.list()).map(toPublicConnection);
   }
 
   async getAuthorizationHeaders(connectionId) {
@@ -56,7 +74,7 @@ class OAuthService {
 
   async request(connectionId, path, options = {}) {
     const connection = await this.getValidConnection(connectionId);
-    const url = this.provider.buildApiUrl(path);
+    const url = this.provider.buildApiUrl(path, connection);
     return this.fetch(url, {
       ...options,
       headers: {
@@ -81,21 +99,35 @@ class OAuthService {
     if (new Date(connection.expiresAt).getTime() > Date.now() + this.refreshSkewMs) return connection;
     if (!connection.refreshToken) throw this.provider.reauthorizationRequiredError();
 
-    let tokens;
-    try {
-      tokens = await this.provider.refreshTokens(connection.refreshToken, this.fetch);
-    } catch (error) {
-      if (this.provider.isReauthorizationError(error)) {
-        await this.connectionStore.markReauthorizationRequired(connectionId);
-        throw this.provider.reauthorizationRequiredError();
-      }
-      throw error;
+    const refreshKey = connection.oauthGrantId || connection.connectionId;
+    const existingRefresh = this.refreshPromises.get(refreshKey);
+    if (existingRefresh) {
+      await existingRefresh;
+      return this.connectionStore.getByConnectionId(connectionId);
     }
-    return this.connectionStore.updateTokens(connectionId, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: toExpiresAt(tokens.expires_in),
-    });
+
+    const refreshPromise = this.refreshConnection(connectionId, connection);
+    this.refreshPromises.set(refreshKey, refreshPromise);
+    try {
+      return await refreshPromise;
+    } finally {
+      this.refreshPromises.delete(refreshKey);
+    }
+  }
+
+  async refreshConnection(connectionId, connection) {
+    try {
+      const tokens = await this.provider.refreshTokens(connection.refreshToken, this.fetch);
+      return this.connectionStore.updateTokens(connectionId, {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: toExpiresAt(tokens.expires_in),
+      });
+    } catch (error) {
+      if (!this.provider.isReauthorizationError(error)) throw error;
+      await this.connectionStore.markReauthorizationRequired(connectionId);
+      throw this.provider.reauthorizationRequiredError();
+    }
   }
 }
 

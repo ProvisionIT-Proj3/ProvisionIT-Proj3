@@ -34,6 +34,7 @@ test("stores encrypted token fields instead of plaintext token values", async ()
     connectionId: "connection-1",
     provider: "xero",
     providerAccountId: "tenant-1",
+    oauthGrantId: "grant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: "2030-01-01T00:00:00.000Z",

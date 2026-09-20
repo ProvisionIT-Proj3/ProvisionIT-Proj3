@@ -3,6 +3,7 @@ const express = require("express");
 function toXeroResponse(connection) {
   const {
     provider,
+    externalConnectionId,
     providerAccountId,
     accountName,
     metadata,
