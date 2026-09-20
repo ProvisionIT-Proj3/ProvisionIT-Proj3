@@ -6,7 +6,7 @@ const KEY_LENGTH = 32;
 
 function decodeKey(encodedKey) {
   if (typeof encodedKey !== "string" || encodedKey.trim() === "") {
-    throw new Error("TOKEN_ENCRYPTION_KEY is required to store Xero tokens.");
+    throw new Error("TOKEN_ENCRYPTION_KEY is required to store OAuth tokens.");
   }
 
   const normalizedKey = encodedKey.trim();
@@ -37,15 +37,10 @@ class TokenCipher {
     if (typeof plaintext !== "string" || plaintext.length === 0) {
       throw new Error("A non-empty token is required for encryption.");
     }
-
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv(ALGORITHM, this.key, iv);
     cipher.setAAD(Buffer.from(context, "utf8"));
-    const ciphertext = Buffer.concat([
-      cipher.update(plaintext, "utf8"),
-      cipher.final(),
-    ]);
-
+    const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     return {
       algorithm: ALGORITHM,
       ciphertext: ciphertext.toString("base64"),
@@ -62,7 +57,6 @@ class TokenCipher {
     if (String(encryptedValue.keyVersion) !== this.keyVersion) {
       throw new Error("No token encryption key is available for the stored key version.");
     }
-
     try {
       const decipher = crypto.createDecipheriv(
         ALGORITHM,

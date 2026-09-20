@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const TokenCipher = require("../src/auth/xero/tokenCipher");
-const TestMemoryXeroConnectionStore = require("../src/auth/xero/testMemoryConnectionStore");
+const TokenCipher = require("../src/auth/core/tokenCipher");
+const TestMemoryConnectionStore = require("../src/auth/core/testMemoryConnectionStore");
 
 const key = Buffer.alloc(32, 9);
 
@@ -29,10 +29,11 @@ test("rejects modified encrypted token data", () => {
 
 test("stores encrypted token fields instead of plaintext token values", async () => {
   const tokenCipher = new TokenCipher({ key, keyVersion: "test" });
-  const store = new TestMemoryXeroConnectionStore({ tokenCipher });
+  const store = new TestMemoryConnectionStore({ provider: "xero", tokenCipher });
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: "2030-01-01T00:00:00.000Z",

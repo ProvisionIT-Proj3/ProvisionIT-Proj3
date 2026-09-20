@@ -1,9 +1,9 @@
 const TokenCipher = require("./tokenCipher");
 
-// Development-only in-memory implementation. Token values are encrypted at the
-// storage boundary so the same encrypted shape can later be persisted in PostgreSQL.
-class TestMemoryXeroConnectionStore {
-  constructor({ tokenCipher } = {}) {
+class TestMemoryConnectionStore {
+  constructor({ provider, tokenCipher } = {}) {
+    if (!provider) throw new Error("An OAuth provider id is required.");
+    this.provider = provider;
     this.connections = new Map();
     this.tokenCipher = tokenCipher || null;
   }
@@ -14,7 +14,7 @@ class TestMemoryXeroConnectionStore {
   }
 
   tokenContext(connectionId, tokenType) {
-    return `xero:${connectionId}:${tokenType}`;
+    return `${this.provider}:${connectionId}:${tokenType}`;
   }
 
   encryptToken(connectionId, tokenType, token) {
@@ -22,40 +22,30 @@ class TestMemoryXeroConnectionStore {
     return this.getTokenCipher().encrypt(token, this.tokenContext(connectionId, tokenType));
   }
 
-  decryptConnection(storedConnection) {
-    if (!storedConnection) return null;
-    const {
-      accessTokenEncrypted,
-      refreshTokenEncrypted,
-      ...connection
-    } = storedConnection;
-
+  decryptConnection(stored) {
+    if (!stored) return null;
+    const { accessTokenEncrypted, refreshTokenEncrypted, ...connection } = stored;
     return {
       ...connection,
       accessToken: accessTokenEncrypted
-        ? this.getTokenCipher().decrypt(
-          accessTokenEncrypted,
-          this.tokenContext(connection.connectionId, "access"),
-        )
+        ? this.getTokenCipher().decrypt(accessTokenEncrypted, this.tokenContext(connection.connectionId, "access"))
         : null,
       refreshToken: refreshTokenEncrypted
-        ? this.getTokenCipher().decrypt(
-          refreshTokenEncrypted,
-          this.tokenContext(connection.connectionId, "refresh"),
-        )
+        ? this.getTokenCipher().decrypt(refreshTokenEncrypted, this.tokenContext(connection.connectionId, "refresh"))
         : null,
     };
   }
 
   async save(connection) {
+    if (connection.provider !== this.provider) throw new Error("Connection provider does not match its store.");
     const { accessToken, refreshToken, ...metadata } = connection;
-    const storedConnection = {
+    const stored = {
       ...metadata,
       accessTokenEncrypted: this.encryptToken(connection.connectionId, "access", accessToken),
       refreshTokenEncrypted: this.encryptToken(connection.connectionId, "refresh", refreshToken),
     };
-    this.connections.set(connection.connectionId, storedConnection);
-    return this.decryptConnection(storedConnection);
+    this.connections.set(connection.connectionId, stored);
+    return this.decryptConnection(stored);
   }
 
   async getByConnectionId(connectionId) {
@@ -63,19 +53,14 @@ class TestMemoryXeroConnectionStore {
   }
 
   async updateTokens(connectionId, tokens) {
-    const storedConnection = this.connections.get(connectionId);
-    if (!storedConnection) return null;
-
+    const stored = this.connections.get(connectionId);
+    if (!stored) return null;
     const { accessToken, refreshToken, ...metadata } = tokens;
     const updated = {
-      ...storedConnection,
+      ...stored,
       ...metadata,
-      ...(accessToken === undefined ? {} : {
-        accessTokenEncrypted: this.encryptToken(connectionId, "access", accessToken),
-      }),
-      ...(refreshToken === undefined ? {} : {
-        refreshTokenEncrypted: this.encryptToken(connectionId, "refresh", refreshToken),
-      }),
+      ...(accessToken === undefined ? {} : { accessTokenEncrypted: this.encryptToken(connectionId, "access", accessToken) }),
+      ...(refreshToken === undefined ? {} : { refreshTokenEncrypted: this.encryptToken(connectionId, "refresh", refreshToken) }),
     };
     this.connections.set(connectionId, updated);
     return this.decryptConnection(updated);
@@ -86,10 +71,10 @@ class TestMemoryXeroConnectionStore {
   }
 
   async markReauthorizationRequired(connectionId) {
-    const storedConnection = this.connections.get(connectionId);
-    if (!storedConnection) return null;
+    const stored = this.connections.get(connectionId);
+    if (!stored) return null;
     const updated = {
-      ...storedConnection,
+      ...stored,
       status: "reauthorization_required",
       expiresAt: null,
       accessTokenEncrypted: null,
@@ -100,12 +85,8 @@ class TestMemoryXeroConnectionStore {
   }
 
   async list() {
-    return [...this.connections.values()].map(({
-      accessTokenEncrypted,
-      refreshTokenEncrypted,
-      ...connection
-    }) => connection);
+    return [...this.connections.values()].map(({ accessTokenEncrypted, refreshTokenEncrypted, ...connection }) => connection);
   }
 }
 
-module.exports = TestMemoryXeroConnectionStore;
+module.exports = TestMemoryConnectionStore;

@@ -1,12 +1,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const OAuthStateStore = require("../src/auth/xero/stateStore");
-const TestMemoryXeroConnectionStore = require("../src/auth/xero/testMemoryConnectionStore");
-const XeroOAuthService = require("../src/auth/xero/service");
-const TokenCipher = require("../src/auth/xero/tokenCipher");
+const OAuthStateStore = require("../src/auth/core/stateStore");
+const TestMemoryConnectionStore = require("../src/auth/core/testMemoryConnectionStore");
+const OAuthService = require("../src/auth/core/oauthService");
+const TokenCipher = require("../src/auth/core/tokenCipher");
+const XeroProvider = require("../src/auth/providers/xero/provider");
 
 function createConnectionStore() {
-  return new TestMemoryXeroConnectionStore({
+  return new TestMemoryConnectionStore({
+    provider: "xero",
     tokenCipher: new TokenCipher({ key: Buffer.alloc(32, 7), keyVersion: "test" }),
   });
 }
@@ -19,11 +21,14 @@ const config = {
   authorizationUrl: "https://login.xero.com/identity/connect/authorize",
   tokenUrl: "https://identity.xero.com/connect/token",
   connectionsUrl: "https://api.xero.com/connections",
+  apiBaseUrl: "https://api.xero.com/api.xro/2.0/",
 };
+
+const provider = new XeroProvider(config);
 
 test("creates an Xero authorization URL with an opaque state", () => {
   const stateStore = new OAuthStateStore();
-  const service = new XeroOAuthService({ config, stateStore, connectionStore: createConnectionStore() });
+  const service = new OAuthService({ provider, stateStore, connectionStore: createConnectionStore() });
 
   const url = new URL(service.getAuthorizationUrl());
   assert.equal(url.searchParams.get("response_type"), "code");
@@ -35,8 +40,8 @@ test("creates an Xero authorization URL with an opaque state", () => {
 test("exchanges a verified code and stores only connection metadata for reads", async () => {
   const stateStore = new OAuthStateStore();
   const calls = [];
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore,
     connectionStore: createConnectionStore(),
     fetchImpl: async (url, options) => {
@@ -54,7 +59,17 @@ test("exchanges a verified code and stores only connection metadata for reads", 
   assert.equal(calls.length, 2);
   assert.match(calls[0].options.headers.Authorization, /^Basic /);
   assert.equal(calls[1].options.headers.Authorization, "Bearer secret-access");
-  assert.deepEqual(connections, [{ connectionId: "connection-1", tenantId: "tenant-1", tenantName: "Demo Company", tenantType: "ORGANISATION", createdAt: undefined, updatedAt: undefined, expiresAt: connections[0].expiresAt }]);
+  assert.deepEqual(connections, [{
+    connectionId: "connection-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
+    accountName: "Demo Company",
+    metadata: { tenantType: "ORGANISATION" },
+    status: "active",
+    createdAt: undefined,
+    updatedAt: undefined,
+    expiresAt: connections[0].expiresAt,
+  }]);
   assert.deepEqual(await service.listConnections(), connections);
 });
 
@@ -62,14 +77,15 @@ test("refreshes an expiring token before returning connector headers", async () 
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "old-access",
     refreshToken: "old-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
   });
   const calls = [];
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore: new OAuthStateStore(),
     connectionStore: store,
     fetchImpl: async (url, options) => {
@@ -89,13 +105,14 @@ test("adds Xero credentials to connector requests without exposing them via the 
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
   });
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore: new OAuthStateStore(),
     connectionStore: store,
     fetchImpl: async (url, options) => {
@@ -106,22 +123,28 @@ test("adds Xero credentials to connector requests without exposing them via the 
     },
   });
 
-  await service.request("connection-1", "https://api.xero.com/api.xro/2.0/Contacts");
+  await service.request("connection-1", "Contacts");
   const stored = await store.getByConnectionId("connection-1");
-  assert.deepEqual(await store.list(), [{ connectionId: "connection-1", tenantId: "tenant-1", expiresAt: stored.expiresAt }]);
+  assert.deepEqual(await store.list(), [{
+    connectionId: "connection-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
+    expiresAt: stored.expiresAt,
+  }]);
 });
 
 test("disconnects the Xero connection and removes its local credential record", async () => {
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "secret-access",
     refreshToken: "secret-refresh",
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
   });
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore: new OAuthStateStore(),
     connectionStore: store,
     fetchImpl: async (url, options) => {
@@ -136,7 +159,7 @@ test("disconnects the Xero connection and removes its local credential record", 
 });
 
 test("rejects a callback whose state is unknown or has already been consumed", async () => {
-  const service = new XeroOAuthService({ config, stateStore: new OAuthStateStore(), connectionStore: createConnectionStore() });
+  const service = new OAuthService({ provider, stateStore: new OAuthStateStore(), connectionStore: createConnectionStore() });
   await assert.rejects(
     service.completeAuthorization({ code: "code", state: "unknown" }),
     { code: "INVALID_OAUTH_STATE", status: 400 },
@@ -147,14 +170,15 @@ test("marks a connection for reauthorization when Xero rejects its refresh token
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "expired-access",
     refreshToken: "expired-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
   });
   let refreshCalls = 0;
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore: new OAuthStateStore(),
     connectionStore: store,
     fetchImpl: async () => {
@@ -183,13 +207,14 @@ test("keeps a connection retryable when Xero has a temporary token endpoint fail
   const store = createConnectionStore();
   await store.save({
     connectionId: "connection-1",
-    tenantId: "tenant-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
     accessToken: "expired-access",
     refreshToken: "valid-refresh",
     expiresAt: new Date(Date.now() - 1000).toISOString(),
   });
-  const service = new XeroOAuthService({
-    config,
+  const service = new OAuthService({
+    provider,
     stateStore: new OAuthStateStore(),
     connectionStore: store,
     fetchImpl: async () => new Response(
@@ -205,4 +230,32 @@ test("keeps a connection retryable when Xero has a temporary token endpoint fail
   const connection = await store.getByConnectionId("connection-1");
   assert.notEqual(connection.status, "reauthorization_required");
   assert.equal(connection.refreshToken, "valid-refresh");
+});
+
+test("rejects absolute connector URLs before sending Xero credentials", async () => {
+  const store = createConnectionStore();
+  await store.save({
+    connectionId: "connection-1",
+    provider: "xero",
+    providerAccountId: "tenant-1",
+    accessToken: "secret-access",
+    refreshToken: "secret-refresh",
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  });
+  let fetchCalled = false;
+  const service = new OAuthService({
+    provider,
+    stateStore: new OAuthStateStore(),
+    connectionStore: store,
+    fetchImpl: async () => {
+      fetchCalled = true;
+      return new Response("{}", { status: 200 });
+    },
+  });
+
+  await assert.rejects(
+    service.request("connection-1", "https://example.com/steal"),
+    { code: "INVALID_XERO_API_PATH", status: 400 },
+  );
+  assert.equal(fetchCalled, false);
 });
