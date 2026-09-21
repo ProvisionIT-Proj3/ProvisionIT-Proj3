@@ -1,44 +1,98 @@
-const store = require("../data/mockStore");
+const { getContacts } = require("../connector/xero/contacts");
+const { getInvoices: getXeroInvoices } = require("../connector/xero/invoices");
+const { getPayments: getXeroPayments } = require("../connector/xero/payments");
+const { getAccounts: getXeroAccounts } = require("../connector/xero/accounts");
 
-// Middle layer: validates request params, applies pagination,
-// and wraps results in the standard response shape.
+// Middle layer: validates request params and wraps results
+// in the standard response shape.
 
-function paginate(items, query) {
-  const page = query.page !== undefined ? parseInt(query.page) : 1;
+function getPagination(query) {
+  const page = query.page !== undefined
+    ? parseInt(query.page, 10)
+    : 1;
+
   const pageSize = query.pageSize !== undefined
-    ? Math.min(parseInt(query.pageSize), 100)
+    ? Math.min(parseInt(query.pageSize, 10), 100)
     : 25;
 
-  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
-    const err = new Error("page and pageSize must be positive numbers.");
+  if (
+    !Number.isInteger(page) ||
+    page < 1 ||
+    !Number.isInteger(pageSize) ||
+    pageSize < 1
+  ) {
+    const err = new Error(
+      "page and pageSize must be positive numbers."
+    );
+
     err.status = 400;
+    err.code = "INVALID_PARAMETER";
     throw err;
   }
 
-  const start = (page - 1) * pageSize;
-  const paged = items.slice(start, start + pageSize);
+  return { page, pageSize };
+}
 
+function wrapResult(items, page, pageSize) {
   return {
-    data: paged,
+    data: items,
     pagination: {
       page,
       pageSize,
       totalItems: items.length,
-      totalPages: Math.ceil(items.length / pageSize),
     },
   };
 }
 
-function getCustomers(query) {
-  return paginate(store.customers, query);
+async function getCustomers(connectionId, query = {}) {
+  const { page, pageSize } = getPagination(query);
+
+  const contacts = await getContacts(connectionId, {
+    page,
+    pageSize,
+  });
+
+  return wrapResult(contacts, page, pageSize);
 }
 
-function getInvoices(query) {
-  return paginate(store.invoices, query);
+async function getInvoices(connectionId, query = {}) {
+  const { page, pageSize } = getPagination(query);
+
+  const invoices = await getXeroInvoices(connectionId, {
+    page,
+    pageSize,
+  });
+
+  return wrapResult(invoices, page, pageSize);
 }
 
-function getPayments(query) {
-  return paginate(store.payments, query);
+async function getPayments(connectionId, query = {}) {
+  const { page, pageSize } = getPagination(query);
+
+  const payments = await getXeroPayments(connectionId, {
+    page,
+    pageSize,
+  });
+
+  return wrapResult(payments, page, pageSize);
 }
 
-module.exports = { getCustomers, getInvoices, getPayments };
+async function getAccounts(connectionId, query = {}) {
+  const accounts = await getXeroAccounts(connectionId);
+
+  return {
+    data: accounts,
+    pagination: {
+      page: 1,
+      pageSize: accounts.length,
+      totalItems: accounts.length,
+    },
+  };
+}
+
+module.exports = {
+  getCustomers,
+  getInvoices,
+  getPayments,
+  getAccounts,
+};

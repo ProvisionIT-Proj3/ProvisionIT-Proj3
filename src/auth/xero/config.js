@@ -3,6 +3,7 @@ const DEFAULT_SCOPES = [
   "accounting.contacts.read",
   "accounting.invoices.read",
   "accounting.payments.read",
+  "accounting.settings.read",
 ];
 
 function getXeroConfig() {

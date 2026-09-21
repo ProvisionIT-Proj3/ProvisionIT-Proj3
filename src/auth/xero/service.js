@@ -7,9 +7,16 @@ function createHttpError(message, status, code) {
 
 async function readResponse(response, code = "XERO_OAUTH_FAILED") {
   const body = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw createHttpError("Xero rejected the OAuth request.", 502, code);
+
+    throw createHttpError(
+      "Xero rejected the OAuth request.",
+      502,
+      code
+    );
   }
+
   return body;
 }
 
