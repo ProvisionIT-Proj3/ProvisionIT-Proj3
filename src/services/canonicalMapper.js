@@ -53,12 +53,12 @@ const NORMALISERS = {
 // c.customer_id = i.customer_id, so that column is our internal PK, whereas
 // canonical customerId/partyId must reference Customer.id (= source_id).
 const DROP_FIELDS = new Set([
-    "customerId",
-    "invoiceId",
-    "paymentId",
-    "connectionId",
-    "createdAt",
-  ]);
+  "customerId",
+  "invoiceId",
+  "paymentId",
+  "connectionId",
+  "createdAt", // internal insert timestamp on every table; not part of the canonical shape
+]);
 
 /**
  * Derive canonical Payment.direction from the invoice it settles.

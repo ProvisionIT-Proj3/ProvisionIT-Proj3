@@ -6,9 +6,11 @@ const { toCanonicalList, deriveDirection } = require("./canonicalMapper");
 //
 // Pagination is NOT uniform across the persistence layer, so each function
 // below matches what its query actually does:
-//   getCustomersByConnection  returns all rows  -> paginate here
-//   getInvoicesByConnection   LIMIT/OFFSET + COUNT -> trust its pagination
+//   getCustomersByConnection  returns all rows      -> paginate here
+//   getInvoicesByConnection   LIMIT/OFFSET + COUNT  -> trust its pagination
 //   getPaymentsByConnection   LIMIT/OFFSET, no count -> do NOT slice again
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validatePagination(query) {
   const page = query.page !== undefined ? parseInt(query.page) : 1;
@@ -28,6 +30,13 @@ function requireConnectionId(query) {
   // for company/tenant scoping (see API design doc, open item 1).
   if (!query.connectionId) {
     const err = new Error("connectionId is required.");
+    err.status = 400;
+    throw err;
+  }
+  // connection_id is a uuid column. Reject malformed ids here, before the
+  // database does, so the caller gets a 400 instead of a 500.
+  if (!UUID_RE.test(query.connectionId)) {
+    const err = new Error("connectionId must be a valid UUID.");
     err.status = 400;
     throw err;
   }
@@ -60,7 +69,7 @@ function requirePersistence(fnName) {
   return persistence[fnName];
 }
 
-// canonical sourceSystem is required on every entity, but the entity tables
+// Canonical sourceSystem is required on every entity, but the entity tables
 // don't carry it. It lives on connections.platform, so fetch it once per
 // request and stamp it on. Remove this if the SELECTs start joining it in.
 async function resolveSourceSystem(connectionId) {
@@ -120,11 +129,10 @@ async function getPayments(query) {
 
   // Already LIMIT/OFFSET in SQL, so these are page rows, not all rows.
   const mapped = rows.map((row) => {
-    const camel = toCamelCase(row);
-    // canonical Payment.direction has no column. It is derivable from the
-    // invoice type, but the payments query does not currently SELECT i.type,
-    // so this stays undefined until that column is returned.
-    return { ...camel, direction: deriveDirection(camel.type) };
+    // `type` is the settled invoice's type, selected only to derive canonical
+    // Payment.direction. Pull it out so it doesn't appear on the payment.
+    const { type, ...camel } = toCamelCase(row);
+    return { ...camel, direction: deriveDirection(type) };
   });
 
   return {

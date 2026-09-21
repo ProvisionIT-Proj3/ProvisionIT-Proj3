@@ -3,8 +3,12 @@
 // Lionel's middleware calls these functions instead of writing raw SQL.
 // Owner: Giorgio (Person 5)
 
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 
+// Return Postgres DATE columns (type oid 1082) as plain 'YYYY-MM-DD' strings.
+// By default pg parses them to a JS Date at local midnight, which shifts them
+// back a day when converted to UTC in a timezone ahead of UTC (e.g. Melbourne).
+types.setTypeParser(1082, (value) => value);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
