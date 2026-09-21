@@ -197,6 +197,79 @@ async function getAccountsByConnection(connectionId) {
   return result.rows;
 }
 
+// Stores the full account list for one connection, as produced by Chris's
+// buildXeroAccounts() (canonical shape, already in report order).
+//
+// Accounts are a report snapshot, not independent records: accounts can be
+// renamed, archived or disappear between syncs. So this REPLACES the stored
+// snapshot for the connection rather than upserting row by row, inside a
+// transaction so readers never see a half-written report.
+//
+// sort_order is taken from array position, which is how report order
+// (header row, then its detail rows) survives storage.
+//
+// Also stamps connections.last_synced_at, which the admin portal displays.
+//
+// @param {string} connectionId
+// @param {object[]} accounts  canonical Account objects in report order
+// @param {string} [reportDate] as-of date of the trial balance, 'YYYY-MM-DD'
+// @returns {{ saved: number }}
+async function saveAccounts(connectionId, accounts, reportDate = null) {
+  if (!Array.isArray(accounts)) {
+    throw new Error('saveAccounts expects an array of canonical accounts');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM accounts WHERE connection_id = $1`, [connectionId]);
+
+    if (accounts.length > 0) {
+      const COLS = 12;
+      const params = [];
+      const rows = accounts.map((a, i) => {
+        params.push(
+          connectionId,
+          a.id,
+          a.code ?? null,
+          a.name,
+          a.type ?? null,
+          a.drCr ?? null,
+          Boolean(a.isHeader),
+          a.level,
+          a.value ?? null,
+          a.taxCode ?? null,
+          i + 1,
+          reportDate
+        );
+        const base = i * COLS;
+        return `(${Array.from({ length: COLS }, (_, c) => `$${base + c + 1}`).join(', ')})`;
+      });
+
+      await client.query(
+        `INSERT INTO accounts
+           (connection_id, source_id, code, name, type, dr_cr, is_header, level,
+            value, tax_code, sort_order, report_date)
+         VALUES ${rows.join(',\n                ')}`,
+        params
+      );
+    }
+
+    await client.query(
+      `UPDATE connections SET last_synced_at = now() WHERE connection_id = $1`,
+      [connectionId]
+    );
+
+    await client.query('COMMIT');
+    return { saved: accounts.length };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ---------- ACTIVITY LOG ----------
 
 async function logActivity(connectionId, action, details = null) {
@@ -219,6 +292,6 @@ module.exports = {
   saveCustomer, getCustomersByConnection,
   saveInvoice, getInvoicesByConnection,
   savePayment, getPaymentsByConnection,
-  getAccountsByConnection,
+  getAccountsByConnection, saveAccounts,
   logActivity, getActivityLog,
 };
