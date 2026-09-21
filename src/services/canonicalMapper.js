@@ -28,10 +28,13 @@ const FIELD_MAPS = {
     method: "paymentType",
     customerSourceId: "partyId",
   },
-  // Accounts are not stored as an entity table. They are built by Chris's
-  // buildXeroAccounts() from GET /Accounts plus GET /Reports/TrialBalance,
-  // and already come out in canonical shape, so no renaming is needed here.
-  account: {},
+  // Accounts are built by Chris's buildXeroAccounts() and stored in the
+  // accounts table. Column names already match canonical once camelCased
+  // (dr_cr -> drCr, is_header -> isHeader, tax_code -> taxCode), so only the
+  // vendor id needs renaming.
+  account: {
+    sourceId: "id",
+  },
 };
 
 // Normalisation applied per canonical field, reusing Chris's shared helpers so
@@ -58,6 +61,8 @@ const DROP_FIELDS = new Set([
   "paymentId",
   "connectionId",
   "createdAt", // internal insert timestamp on every table; not part of the canonical shape
+  "accountId", // internal PK of the accounts table
+  "sortOrder", // storage detail; order is applied by the query, not exposed
 ]);
 
 /**

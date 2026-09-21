@@ -9,6 +9,7 @@ const { Pool, types } = require('pg');
 // By default pg parses them to a JS Date at local midnight, which shifts them
 // back a day when converted to UTC in a timezone ahead of UTC (e.g. Melbourne).
 types.setTypeParser(1082, (value) => value);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
@@ -184,6 +185,18 @@ async function getPaymentsByConnection(connectionId, filters = {}) {
   return result.rows;
 }
 
+// ---------- ACCOUNTS ----------
+
+// Accounts are stored as the assembled report (header rows + detail rows), so
+// ORDER BY sort_order is required to return them in report sequence.
+async function getAccountsByConnection(connectionId) {
+  const result = await pool.query(
+    `SELECT * FROM accounts WHERE connection_id = $1 ORDER BY sort_order`,
+    [connectionId]
+  );
+  return result.rows;
+}
+
 // ---------- ACTIVITY LOG ----------
 
 async function logActivity(connectionId, action, details = null) {
@@ -206,5 +219,6 @@ module.exports = {
   saveCustomer, getCustomersByConnection,
   saveInvoice, getInvoicesByConnection,
   savePayment, getPaymentsByConnection,
+  getAccountsByConnection,
   logActivity, getActivityLog,
 };

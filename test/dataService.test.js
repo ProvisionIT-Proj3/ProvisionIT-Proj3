@@ -86,7 +86,15 @@ const fakePersistence = {
       },
     ];
   },
-  // getAccountsByConnection intentionally absent: no accounts data source yet.
+  async getAccountsByConnection() {
+    // Already in sort_order, as the real query returns them.
+    return [
+      { account_id: "internal-acc-1", connection_id: CONN, source_id: "header:Bank", code: "HDR-1", name: "Bank", type: "Bank", dr_cr: "Dr", is_header: true, level: 1, value: "25000.00", tax_code: null, sort_order: 1, report_date: "2026-08-31", created_at: "x", updated_at: "2026-09-01T00:00:00.000Z" },
+      { account_id: "internal-acc-2", connection_id: CONN, source_id: "acc_090", code: "090", name: "Business Bank Account", type: "BANK", dr_cr: "Dr", is_header: false, level: 2, value: "25000.00", tax_code: "N-T", sort_order: 2, report_date: "2026-08-31", created_at: "x", updated_at: "2026-09-01T00:00:00.000Z" },
+      { account_id: "internal-acc-3", connection_id: CONN, source_id: "header:Revenue", code: "HDR-2", name: "Revenue", type: "Revenue", dr_cr: "Cr", is_header: true, level: 1, value: "40000.00", tax_code: null, sort_order: 3, report_date: "2026-08-31", created_at: "x", updated_at: "2026-09-01T00:00:00.000Z" },
+      { account_id: "internal-acc-4", connection_id: CONN, source_id: "acc_200", code: "200", name: "Sales", type: "REVENUE", dr_cr: "Cr", is_header: false, level: 2, value: "40000.00", tax_code: "GST", sort_order: 4, report_date: "2026-08-31", created_at: "x", updated_at: "2026-09-01T00:00:00.000Z" },
+    ];
+  },
 };
 
 // Inject the fake into the module cache so dataService never loads the real
@@ -238,11 +246,44 @@ test("the invoice type used to derive direction is not exposed on payments", asy
 
 // ---------- accounts ----------
 
-test("accounts returns 501 until a data source exists", async () => {
-  await rejectsWithStatus(svc.getAccounts({ connectionId: CONN }), 501, /getAccountsByConnection/);
+test("accounts are mapped to canonical field names", async () => {
+  const { data } = await svc.getAccounts({ connectionId: CONN });
+  const detail = data[1];
+
+  assert.equal(detail.id, "acc_090", "id should be the vendor source_id");
+  assert.equal(detail.code, "090");
+  assert.equal(detail.name, "Business Bank Account");
+  assert.equal(detail.drCr, "Dr");
+  assert.equal(detail.isHeader, false);
+  assert.equal(detail.level, 2);
+  assert.equal(detail.value, 25000, "numeric value should come back as a number");
+  assert.equal(detail.taxCode, "N-T");
+  assert.equal(detail.sourceSystem, "xero");
 });
 
-test("accounts still validates connectionId before reporting 501", async () => {
+test("accounts keep report order: header, then its detail rows", async () => {
+  const { data } = await svc.getAccounts({ connectionId: CONN });
+  assert.deepEqual(
+    data.map((a) => [a.id, a.isHeader, a.level]),
+    [
+      ["header:Bank", true, 1],
+      ["acc_090", false, 2],
+      ["header:Revenue", true, 1],
+      ["acc_200", false, 2],
+    ]
+  );
+});
+
+test("accounts do not leak internal database columns", async () => {
+  const { data } = await svc.getAccounts({ connectionId: CONN });
+  for (const acc of data) {
+    for (const internal of ["accountId", "connectionId", "createdAt", "sortOrder", "sourceId"]) {
+      assert.ok(!(internal in acc), `${internal} should not appear in the response`);
+    }
+  }
+});
+
+test("accounts validates connectionId", async () => {
   await rejectsWithStatus(svc.getAccounts({ connectionId: "test" }), 400);
 });
 
@@ -253,6 +294,7 @@ test("every endpoint returns the same data + pagination shape", async () => {
     svc.getCustomers({ connectionId: CONN }),
     svc.getInvoices({ connectionId: CONN }),
     svc.getPayments({ connectionId: CONN }),
+    svc.getAccounts({ connectionId: CONN }),
   ]);
 
   for (const res of responses) {
