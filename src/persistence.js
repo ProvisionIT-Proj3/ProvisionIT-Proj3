@@ -1,7 +1,7 @@
 // persistence.js
 // Persistence layer — the ONLY place in the codebase that talks directly to the database.
 // Lionel's middleware calls these functions instead of writing raw SQL.
-// Owner: Giorgio (Person 5)
+// Owner: Giorgio 
 
 const { Pool } = require('pg');
 
@@ -11,23 +11,12 @@ const pool = new Pool({
 
 // ---------- CONNECTIONS ----------
 
-async function createConnection({ companyName, platform }) {
+async function createConnection({ companyName, platform, externalAccountId }) {
   const result = await pool.query(
-    `INSERT INTO connections (company_name, platform, status)
-     VALUES ($1, $2, 'active')
+    `INSERT INTO connections (company_name, platform, status, external_account_id)
+     VALUES ($1, $2, 'active', $3)
      RETURNING *`,
-    [companyName, platform]
-  );
-  return result.rows[0];
-}
-
-async function saveTokens(connectionId, { accessToken, refreshToken, expiresAt }) {
-  const result = await pool.query(
-    `UPDATE connections
-     SET access_token = $1, refresh_token = $2, token_expires_at = $3
-     WHERE connection_id = $4
-     RETURNING connection_id, company_name, platform, status, token_expires_at`,
-    [accessToken, refreshToken, expiresAt, connectionId]
+    [companyName, platform, externalAccountId]
   );
   return result.rows[0];
 }
@@ -46,9 +35,59 @@ async function listConnections() {
 }
 
 async function deleteConnection(connectionId) {
-  // Cascades to customers/invoices/payments via FK constraints; activity_log keeps its rows (SET NULL)
   await pool.query(`DELETE FROM connections WHERE connection_id = $1`, [connectionId]);
   return { deleted: true };
+}
+
+// ---------- OAUTH CREDENTIALS ----------
+// Tokens live here, not on `connections`, because one Xero OAuth grant can cover
+// multiple organisations sharing the same rotating tokens (Yihan's multi-provider point).
+
+async function createCredential({ platform, accessToken, refreshToken, expiresAt }) {
+  const result = await pool.query(
+    `INSERT INTO oauth_credentials (platform, access_token, refresh_token, token_expires_at)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [platform, accessToken, refreshToken, expiresAt]
+  );
+  return result.rows[0];
+}
+
+// Refreshing updates ONE row here — every connection referencing this credential_id
+// automatically sees the new token, no per-connection update loop needed.
+async function updateCredentialTokens(credentialId, { accessToken, refreshToken, expiresAt }) {
+  const result = await pool.query(
+    `UPDATE oauth_credentials
+     SET access_token = $1, refresh_token = $2, token_expires_at = $3
+     WHERE credential_id = $4
+     RETURNING *`,
+    [accessToken, refreshToken, expiresAt, credentialId]
+  );
+  return result.rows[0];
+}
+
+// Links a connection (one company/tenant) to a shared credential
+async function linkConnectionToCredential(connectionId, credentialId, externalAccountId) {
+  const result = await pool.query(
+    `UPDATE connections
+     SET credential_id = $1, external_account_id = $2
+     WHERE connection_id = $3
+     RETURNING connection_id, company_name, platform, status, external_account_id, credential_id`,
+    [credentialId, externalAccountId, connectionId]
+  );
+  return result.rows[0];
+}
+
+// Gets a connection's current tokens by following its credential_id
+async function getTokensForConnection(connectionId) {
+  const result = await pool.query(
+    `SELECT oc.access_token, oc.refresh_token, oc.token_expires_at
+     FROM connections c
+     JOIN oauth_credentials oc ON oc.credential_id = c.credential_id
+     WHERE c.connection_id = $1`,
+    [connectionId]
+  );
+  return result.rows[0] || null;
 }
 
 // ---------- CUSTOMERS ----------
@@ -89,7 +128,6 @@ async function saveInvoice(customerId, invoice) {
   return result.rows[0];
 }
 
-// Main function the REST API's GET /invoices endpoint will call
 async function getInvoicesByConnection(connectionId, filters = {}) {
   const conditions = [`c.connection_id = $1`];
   const params = [connectionId];
@@ -191,7 +229,8 @@ async function getActivityLog(connectionId, limit = 50) {
 }
 
 module.exports = {
-  createConnection, saveTokens, getConnectionById, listConnections, deleteConnection,
+  createConnection, getConnectionById, listConnections, deleteConnection,
+  createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   saveCustomer, getCustomersByConnection,
   saveInvoice, getInvoicesByConnection,
   savePayment, getPaymentsByConnection,
