@@ -1,45 +1,33 @@
-const XERO_BASE_URL = "https://api.xero.com/api.xro/2.0";
+const { registry } = require("../../auth");
 
 /**
- * Makes an authenticated GET request to the Xero Accounting API.
+ * Makes an authenticated request to the Xero Accounting API.
  *
- * @param {string} endpoint - Xero endpoint, e.g. "Contacts"
- * @param {string} accessToken - Valid OAuth access token
- * @param {string} tenantId - Authorised Xero tenant ID
- * @param {Object} queryParams - Optional URL query parameters
- * @returns {Promise<Object>} Xero JSON response
+ * connectionId is the middleware-generated internal connection ID.
+ * Authentication handles the Xero tenant ID, access token,
+ * token refresh, headers, and API base URL.
  */
-export async function xeroRequest(
-    endpoint,
-    accessToken,
-    tenantId,
-    queryParams = {}
-) {
-    const url = new URL(`${XERO_BASE_URL}/${endpoint}`);
+async function xeroRequest(connectionId, relativePath, options = {}) {
+  const xeroAuth = registry.require("xero");
 
-    // Add optional query parameters
-    Object.entries(queryParams).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-            url.searchParams.append(key, value);
-        }
-    });
+  const response = await xeroAuth.request(
+    connectionId,
+    relativePath,
+    options
+  );
 
-    const response = await fetch(url, {
-        method: "GET",
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "xero-tenant-id": tenantId,
-            Accept: "application/json"
-        }
-    });
+  if (!response.ok) {
+    const error = new Error(
+      `Xero API request failed with status ${response.status}.`
+    );
 
-    if (!response.ok) {
-        const errorBody = await response.text();
+    error.status = response.status;
+    error.code = "XERO_API_ERROR";
 
-        throw new Error(
-            `Xero API request failed: ${response.status} ${response.statusText}\n${errorBody}`
-        );
-    }
+    throw error;
+  }
 
-    return response.json();
+  return response.json();
 }
+
+module.exports = { xeroRequest };

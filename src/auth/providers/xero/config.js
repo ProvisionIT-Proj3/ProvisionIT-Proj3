@@ -1,8 +1,6 @@
 const DEFAULT_SCOPES = [
   "offline_access",
-  "accounting.contacts.read",
-  "accounting.invoices.read",
-  "accounting.payments.read",
+  "accounting.settings.read",
 ];
 
 function getXeroConfig(env = process.env) {

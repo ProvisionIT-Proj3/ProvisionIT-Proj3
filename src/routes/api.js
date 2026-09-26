@@ -15,58 +15,10 @@ function getConnectionId(req) {
   return connectionId;
 }
 
-router.get("/customers", async (req, res, next) => {
-  try {
-    const connectionId = getConnectionId(req);
-
-    const result = await dataService.getCustomers(
-      connectionId,
-      req.query
-    );
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/invoices", async (req, res, next) => {
-  try {
-    const connectionId = getConnectionId(req);
-
-    const result = await dataService.getInvoices(
-      connectionId,
-      req.query
-    );
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/payments", async (req, res, next) => {
-  try {
-    const connectionId = getConnectionId(req);
-
-    const result = await dataService.getPayments(
-      connectionId,
-      req.query
-    );
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
 router.get("/accounts", async (req, res, next) => {
   try {
     const connectionId = getConnectionId(req);
-    const result = await dataService.getAccounts(
-      connectionId,
-      req.query
-    );
+    const result = await dataService.getAccounts(connectionId);
 
     res.json(result);
   } catch (error) {
