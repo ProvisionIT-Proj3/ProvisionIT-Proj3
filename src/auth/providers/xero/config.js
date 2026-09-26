@@ -1,6 +1,7 @@
 const DEFAULT_SCOPES = [
   "offline_access",
   "accounting.settings.read",
+  "accounting.reports.trialbalance.read",
 ];
 
 function getXeroConfig(env = process.env) {

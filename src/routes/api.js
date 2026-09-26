@@ -26,4 +26,15 @@ router.get("/accounts", async (req, res, next) => {
   }
 });
 
+router.get("/trial-balance", async (req, res, next) => {
+  try {
+    const connectionId = getConnectionId(req);
+    const result = await dataService.getTrialBalance(connectionId);
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
