@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 
 class OAuthStateStore {
   constructor({ ttlMs = 10 * 60 * 1000 } = {}) {
@@ -15,7 +15,7 @@ class OAuthStateStore {
 
   consume(state) {
     const record = this.states.get(state);
-    this.states.delete(state); // States are single use, including failed attempts.
+    this.states.delete(state);
     if (!record || record.expiresAt < Date.now()) return null;
     return record;
   }
