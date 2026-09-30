@@ -8,7 +8,7 @@
     "demo": "node runDemo.js",
     "transform": "node transform.js",
     "accounts-report": "node buildXeroAccountsReport.js",
-    "test": "node --test"
+    "test": "node --experimental-test-module-mocks --test"
   },
   "keywords": [],
   "author": "",
