@@ -4,11 +4,21 @@
   "description": "Proof of concept: canonical data model & vendor mapping layer for the Provision IT accounting middleware (Xero / MYOB / QuickBooks)",
   "main": "src/index.js",
   "scripts": {
+    "start": "node src/server.js",
     "demo": "node runDemo.js",
     "transform": "node transform.js",
     "accounts-report": "node buildXeroAccountsReport.js",
     "test": "node --test"
   },
+  "keywords": [],
+  "author": "",
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@supabase/ssr": "^0.12.6",
+    "@supabase/supabase-js": "^2.116.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  }
 }

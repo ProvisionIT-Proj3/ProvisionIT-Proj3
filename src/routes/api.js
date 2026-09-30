@@ -2,31 +2,38 @@ const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
 
-// All routes are read-only GET endpoints, per FR-10.
-// Company scoping (connectionId) will be added once the team confirms
-// the approach (see open question in API design doc).
+function getConnectionId(req) {
+  const connectionId = req.query.connectionId;
 
-router.get("/customers", (req, res, next) => {
+  if (!connectionId) {
+    const err = new Error("connectionId is required.");
+    err.status = 400;
+    err.code = "MISSING_CONNECTION_ID";
+    throw err;
+  }
+
+  return connectionId;
+}
+
+router.get("/accounts", async (req, res, next) => {
   try {
-    res.json(dataService.getCustomers(req.query));
-  } catch (err) {
-    next(err);
+    const connectionId = getConnectionId(req);
+    const result = await dataService.getAccounts(connectionId);
+
+    res.json(result);
+  } catch (error) {
+    next(error);
   }
 });
 
-router.get("/invoices", (req, res, next) => {
+router.get("/trial-balance", async (req, res, next) => {
   try {
-    res.json(dataService.getInvoices(req.query));
-  } catch (err) {
-    next(err);
-  }
-});
+    const connectionId = getConnectionId(req);
+    const result = await dataService.getTrialBalance(connectionId);
 
-router.get("/payments", (req, res, next) => {
-  try {
-    res.json(dataService.getPayments(req.query));
-  } catch (err) {
-    next(err);
+    res.json(result);
+  } catch (error) {
+    next(error);
   }
 });
 
