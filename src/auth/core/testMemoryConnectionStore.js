@@ -1,10 +1,12 @@
 const TokenCipher = require("./tokenCipher");
+const crypto = require("node:crypto");
 
 class TestMemoryConnectionStore {
   constructor({ provider, tokenCipher } = {}) {
     if (!provider) throw new Error("An OAuth provider id is required.");
     this.provider = provider;
     this.connections = new Map();
+    this.credentials = new Map();
     this.tokenCipher = tokenCipher || null;
   }
 
@@ -24,25 +26,62 @@ class TestMemoryConnectionStore {
 
   decryptConnection(stored) {
     if (!stored) return null;
-    const { accessTokenEncrypted, refreshTokenEncrypted, ...connection } = stored;
+    const credential = this.credentials.get(stored.credentialId);
+    if (!credential) return null;
     return {
-      ...connection,
-      accessToken: accessTokenEncrypted
-        ? this.getTokenCipher().decrypt(accessTokenEncrypted, this.tokenContext(connection.oauthGrantId, "access"))
+      ...stored,
+      status: credential.status,
+      expiresAt: credential.expiresAt,
+      accessToken: credential.accessTokenEncrypted
+        ? this.getTokenCipher().decrypt(credential.accessTokenEncrypted, this.tokenContext(stored.credentialId, "access"))
         : null,
-      refreshToken: refreshTokenEncrypted
-        ? this.getTokenCipher().decrypt(refreshTokenEncrypted, this.tokenContext(connection.oauthGrantId, "refresh"))
+      refreshToken: credential.refreshTokenEncrypted
+        ? this.getTokenCipher().decrypt(credential.refreshTokenEncrypted, this.tokenContext(stored.credentialId, "refresh"))
         : null,
     };
   }
 
+  createCredential(tokens, credentialId = crypto.randomUUID()) {
+    this.credentials.set(credentialId, {
+      credentialId,
+      provider: this.provider,
+      status: tokens.status || "active",
+      expiresAt: tokens.expiresAt,
+      accessTokenEncrypted: this.encryptToken(credentialId, "access", tokens.accessToken),
+      refreshTokenEncrypted: this.encryptToken(credentialId, "refresh", tokens.refreshToken),
+    });
+    return credentialId;
+  }
+
+  async saveAuthorization(connections, tokens) {
+    if (!connections.length) return [];
+    if (connections.some((connection) => connection.provider !== this.provider)) {
+      throw new Error("Connection provider does not match its store.");
+    }
+    const credentialId = this.createCredential(tokens);
+    return connections.map((connection) => {
+      const { accessToken, refreshToken, oauthGrantId, ...metadata } = connection;
+      const stored = { ...metadata, credentialId };
+      this.connections.set(connection.connectionId, stored);
+      return this.decryptConnection(stored);
+    });
+  }
+
   async save(connection) {
     if (connection.provider !== this.provider) throw new Error("Connection provider does not match its store.");
-    const { accessToken, refreshToken, ...metadata } = connection;
+    const { accessToken, refreshToken, oauthGrantId, ...metadata } = connection;
+    const credentialId = connection.credentialId || oauthGrantId || crypto.randomUUID();
+    if (!this.credentials.has(credentialId)) {
+      this.createCredential({
+        accessToken,
+        refreshToken,
+        expiresAt: connection.expiresAt,
+        status: connection.status,
+      }, credentialId);
+    }
     const stored = {
       ...metadata,
-      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", accessToken),
-      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", refreshToken),
+      credentialId,
     };
     this.connections.set(connection.connectionId, stored);
     return this.decryptConnection(stored);
@@ -55,51 +94,57 @@ class TestMemoryConnectionStore {
   async updateTokens(connectionId, tokens) {
     const stored = this.connections.get(connectionId);
     if (!stored) return null;
+    const credential = this.credentials.get(stored.credentialId);
+    if (!credential) return null;
     const { accessToken, refreshToken, ...metadata } = tokens;
-    let requestedConnection;
-    for (const [id, connection] of this.connections) {
-      if (connection.oauthGrantId !== stored.oauthGrantId) continue;
-      const updated = {
-        ...connection,
-        ...metadata,
-        ...(accessToken === undefined ? {} : {
-          accessTokenEncrypted: this.encryptToken(stored.oauthGrantId, "access", accessToken),
-        }),
-        ...(refreshToken === undefined ? {} : {
-          refreshTokenEncrypted: this.encryptToken(stored.oauthGrantId, "refresh", refreshToken),
-        }),
-      };
-      this.connections.set(id, updated);
-      if (id === connectionId) requestedConnection = updated;
-    }
-    return this.decryptConnection(requestedConnection);
+    this.credentials.set(stored.credentialId, {
+      ...credential,
+      ...metadata,
+      status: tokens.status || "active",
+      ...(accessToken === undefined ? {} : {
+        accessTokenEncrypted: this.encryptToken(stored.credentialId, "access", accessToken),
+      }),
+      ...(refreshToken === undefined ? {} : {
+        refreshTokenEncrypted: this.encryptToken(stored.credentialId, "refresh", refreshToken),
+      }),
+    });
+    return this.decryptConnection(stored);
   }
 
   async deleteByConnectionId(connectionId) {
-    return this.connections.delete(connectionId);
+    const stored = this.connections.get(connectionId);
+    if (!stored) return false;
+    this.connections.delete(connectionId);
+    const stillLinked = [...this.connections.values()]
+      .some((connection) => connection.credentialId === stored.credentialId);
+    if (!stillLinked) this.credentials.delete(stored.credentialId);
+    return true;
   }
 
   async markReauthorizationRequired(connectionId) {
     const stored = this.connections.get(connectionId);
     if (!stored) return null;
-    let requestedConnection;
-    for (const [id, connection] of this.connections) {
-      if (connection.oauthGrantId !== stored.oauthGrantId) continue;
-      const updated = {
-        ...connection,
-        status: "reauthorization_required",
-        expiresAt: null,
-        accessTokenEncrypted: null,
-        refreshTokenEncrypted: null,
-      };
-      this.connections.set(id, updated);
-      if (id === connectionId) requestedConnection = updated;
-    }
-    return this.decryptConnection(requestedConnection);
+    const credential = this.credentials.get(stored.credentialId);
+    if (!credential) return null;
+    this.credentials.set(stored.credentialId, {
+      ...credential,
+      status: "reauthorization_required",
+      expiresAt: null,
+      accessTokenEncrypted: null,
+      refreshTokenEncrypted: null,
+    });
+    return this.decryptConnection(stored);
   }
 
   async list() {
-    return [...this.connections.values()].map(({ accessTokenEncrypted, refreshTokenEncrypted, ...connection }) => connection);
+    return [...this.connections.values()].map((connection) => {
+      const credential = this.credentials.get(connection.credentialId);
+      return {
+        ...connection,
+        status: credential?.status,
+        expiresAt: credential?.expiresAt,
+      };
+    });
   }
 }
 

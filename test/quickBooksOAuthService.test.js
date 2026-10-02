@@ -61,7 +61,7 @@ test("creates a QuickBooks authorization URL with accounting scope and state", (
 test("exchanges the callback code and stores the QuickBooks realm", async () => {
   const stateStore = new OAuthStateStore();
   const calls = [];
-  const ids = ["grant-1", "internal-connection-1"];
+  const ids = ["internal-connection-1"];
   const store = createConnectionStore();
   const service = new OAuthService({
     provider,
@@ -98,8 +98,8 @@ test("exchanges the callback code and stores the QuickBooks realm", async () => 
   assert.equal(calls[1].options.headers.Authorization, "Bearer access-token");
   assert.equal(connections[0].connectionId, "internal-connection-1");
   assert.equal(connections[0].providerAccountId, "9341452901234567");
-  assert.equal(connections[0].oauthGrantId, undefined);
-  assert.equal((await store.getByConnectionId("internal-connection-1")).oauthGrantId, "grant-1");
+  assert.equal(connections[0].credentialId, undefined);
+  assert.ok((await store.getByConnectionId("internal-connection-1")).credentialId);
   assert.equal(connections[0].accountName, "Demo QBO Company");
   assert.doesNotMatch(JSON.stringify(connections), /access-token|refresh-token/);
 });
@@ -187,4 +187,17 @@ test("rejects absolute QuickBooks API URLs before sending credentials", async ()
     { code: "INVALID_QUICKBOOKS_API_PATH", status: 400 },
   );
   assert.equal(fetchCalled, false);
+});
+
+test("reports whether an internal connection belongs to QuickBooks", async () => {
+  const store = createConnectionStore();
+  await store.save(connection());
+  const service = new OAuthService({
+    provider,
+    stateStore: new OAuthStateStore(),
+    connectionStore: store,
+  });
+
+  assert.equal(await service.hasConnection("internal-connection-1"), true);
+  assert.equal(await service.hasConnection("missing"), false);
 });

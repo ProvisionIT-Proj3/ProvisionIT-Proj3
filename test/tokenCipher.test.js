@@ -40,12 +40,13 @@ test("stores encrypted token fields instead of plaintext token values", async ()
     expiresAt: "2030-01-01T00:00:00.000Z",
   });
 
-  const stored = store.connections.get("connection-1");
-  assert.equal(stored.accessToken, undefined);
-  assert.equal(stored.refreshToken, undefined);
-  assert.ok(stored.accessTokenEncrypted.ciphertext);
-  assert.ok(stored.refreshTokenEncrypted.ciphertext);
-  assert.doesNotMatch(JSON.stringify(stored), /secret-access|secret-refresh/);
+  const storedConnection = store.connections.get("connection-1");
+  const storedCredential = store.credentials.get(storedConnection.credentialId);
+  assert.equal(storedConnection.accessToken, undefined);
+  assert.equal(storedConnection.refreshToken, undefined);
+  assert.ok(storedCredential.accessTokenEncrypted.ciphertext);
+  assert.ok(storedCredential.refreshTokenEncrypted.ciphertext);
+  assert.doesNotMatch(JSON.stringify({ storedConnection, storedCredential }), /secret-access|secret-refresh/);
 
   const decrypted = await store.getByConnectionId("connection-1");
   assert.equal(decrypted.accessToken, "secret-access");
