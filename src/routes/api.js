@@ -1,12 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
-const { getAccounts: getQuickBooksAccounts } = require(
-  "../connector/quickbooks/accounts"
-);
-const { getTrialBalance: getQuickBooksTrialBalance } = require(
-  "../connector/quickbooks/trialBalance"
-);
+
 function getConnectionId(req) {
   const connectionId = req.query.connectionId;
 
@@ -37,34 +32,6 @@ router.get("/trial-balance", async (req, res, next) => {
     const result = await dataService.getTrialBalance(connectionId);
 
     res.json(result);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/quickbooks-test/accounts", async (req, res, next) => {
-  try {
-    const connectionId = getConnectionId(req);
-
-    const accounts = await getQuickBooksAccounts(connectionId);
-
-    res.json({
-      data: accounts,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/quickbooks-test/trial-balance", async (req, res, next) => {
-  try {
-    const connectionId = getConnectionId(req);
-
-    const trialBalance = await getQuickBooksTrialBalance(connectionId);
-
-    res.json({
-      data: trialBalance,
-    });
   } catch (error) {
     next(error);
   }
