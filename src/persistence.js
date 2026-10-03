@@ -1,7 +1,7 @@
 // persistence.js
 // Persistence layer — the ONLY place in the codebase that talks directly to the database.
 // Lionel's middleware calls these functions instead of writing raw SQL.
-// Owner: Giorgio 
+// Owner: Giorgio (Person 5)
 
 const { Pool } = require('pg');
 
@@ -88,6 +88,27 @@ async function getTokensForConnection(connectionId) {
     [connectionId]
   );
   return result.rows[0] || null;
+}
+
+// ---------- USER ROLES ----------
+
+async function getUserRole(userId) {
+  const result = await pool.query(
+    `SELECT role FROM user_profiles WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows[0]?.role || null; // null = no profile yet
+}
+
+async function setUserRole(userId, role) {
+  const result = await pool.query(
+    `INSERT INTO user_profiles (user_id, role)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role
+     RETURNING *`,
+    [userId, role]
+  );
+  return result.rows[0];
 }
 
 // ---------- CUSTOMERS ----------
@@ -231,6 +252,7 @@ async function getActivityLog(connectionId, limit = 50) {
 module.exports = {
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
+  getUserRole, setUserRole,
   saveCustomer, getCustomersByConnection,
   saveInvoice, getInvoicesByConnection,
   savePayment, getPaymentsByConnection,
