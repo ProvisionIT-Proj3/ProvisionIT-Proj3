@@ -15,3 +15,12 @@ test("does not allow a provider registration to be silently replaced", () => {
   const registry = new ProviderRegistry().register("xero", {});
   assert.throws(() => registry.register("xero", {}), /already registered/);
 });
+
+test("resolves the provider that owns an internal connection id", async () => {
+  const registry = new ProviderRegistry()
+    .register("xero", { hasConnection: async (id) => id === "xero-connection" })
+    .register("quickbooks", { hasConnection: async (id) => id === "quickbooks-connection" });
+
+  assert.equal(await registry.resolveProvider("quickbooks-connection"), "quickbooks");
+  assert.equal(await registry.resolveProvider("missing"), null);
+});

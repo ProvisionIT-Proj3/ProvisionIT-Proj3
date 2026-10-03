@@ -18,6 +18,13 @@ class ProviderRegistry {
     if (!service) throw new Error(`Unsupported OAuth provider: ${providerId}`);
     return service;
   }
+
+  async resolveProvider(connectionId) {
+    for (const [providerId, service] of this.services) {
+      if (await service.hasConnection(connectionId)) return providerId;
+    }
+    return null;
+  }
 }
 
 module.exports = ProviderRegistry;
