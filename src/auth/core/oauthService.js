@@ -6,7 +6,7 @@ function toExpiresAt(expiresIn) {
 }
 
 function toPublicConnection(connection) {
-  const { accessToken, refreshToken, oauthGrantId, ...publicConnection } = connection;
+  const { accessToken, refreshToken, credentialId, oauthGrantId, ...publicConnection } = connection;
   return publicConnection;
 }
 
@@ -50,21 +50,26 @@ class OAuthService {
     });
     if (!accounts.length) throw this.provider.noAccountsError();
 
-    const oauthGrantId = this.idFactory();
-    const saved = await Promise.all(accounts.map((account) => this.connectionStore.save({
+    const connections = accounts.map((account) => ({
       ...account,
       connectionId: this.idFactory(),
-      oauthGrantId,
       provider: this.provider.id,
+    }));
+    const saved = await this.connectionStore.saveAuthorization(connections, {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt: toExpiresAt(tokens.expires_in),
-    })));
+    });
     return saved.map(toPublicConnection);
   }
 
   async listConnections() {
     return (await this.connectionStore.list()).map(toPublicConnection);
+  }
+
+  async hasConnection(connectionId) {
+    const connection = await this.connectionStore.getByConnectionId(connectionId);
+    return Boolean(connection && connection.provider === this.provider.id);
   }
 
   async getAuthorizationHeaders(connectionId) {
@@ -99,7 +104,7 @@ class OAuthService {
     if (new Date(connection.expiresAt).getTime() > Date.now() + this.refreshSkewMs) return connection;
     if (!connection.refreshToken) throw this.provider.reauthorizationRequiredError();
 
-    const refreshKey = connection.oauthGrantId || connection.connectionId;
+    const refreshKey = connection.credentialId || connection.connectionId;
     const existingRefresh = this.refreshPromises.get(refreshKey);
     if (existingRefresh) {
       await existingRefresh;

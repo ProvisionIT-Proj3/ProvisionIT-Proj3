@@ -1,12 +1,12 @@
 const TokenCipher = require("./tokenCipher");
 
 const REQUIRED_PERSISTENCE_METHODS = [
+  "createOAuthCredential",
+  "updateOAuthCredentialTokens",
   "saveOAuthConnection",
   "getOAuthConnectionById",
-  "updateOAuthGrantTokens",
   "deleteOAuthConnection",
   "listOAuthConnections",
-  "markOAuthGrantReauthorizationRequired",
 ];
 
 function toIsoString(value) {
@@ -19,21 +19,27 @@ function parseJson(value) {
   return typeof value === "string" ? JSON.parse(value) : value;
 }
 
+function credentialIdFrom(row) {
+  if (typeof row === "string") return row;
+  return row?.credential_id ?? row?.credentialId ?? null;
+}
+
 function mapDatabaseRow(row) {
   if (!row) return null;
   return {
-    connectionId: row.connection_id,
-    provider: row.platform,
-    externalConnectionId: row.external_connection_id,
-    providerAccountId: row.external_account_id ?? row.provider_account_id,
-    oauthGrantId: row.oauth_grant_id,
-    accountName: row.company_name,
-    metadata: parseJson(row.provider_metadata) || {},
-    status: row.status,
-    createdAt: toIsoString(row.date_connected),
-    expiresAt: toIsoString(row.token_expires_at),
-    accessTokenEncrypted: parseJson(row.access_token),
-    refreshTokenEncrypted: parseJson(row.refresh_token),
+    connectionId: row.connection_id ?? row.connectionId,
+    credentialId: credentialIdFrom(row),
+    provider: row.platform ?? row.provider,
+    externalConnectionId: row.external_connection_id ?? row.externalConnectionId,
+    providerAccountId:
+      row.external_account_id ?? row.externalAccountId ?? row.provider_account_id,
+    accountName: row.company_name ?? row.companyName,
+    metadata: parseJson(row.provider_metadata ?? row.providerMetadata) || {},
+    status: row.credential_status ?? row.credentialStatus ?? row.status,
+    createdAt: toIsoString(row.date_connected ?? row.createdAt),
+    expiresAt: toIsoString(row.token_expires_at ?? row.expiresAt),
+    accessTokenEncrypted: parseJson(row.access_token ?? row.accessToken),
+    refreshTokenEncrypted: parseJson(row.refresh_token ?? row.refreshToken),
   };
 }
 
@@ -52,12 +58,13 @@ class DatabaseConnectionStore {
     this.tokenCipher = tokenCipher || TokenCipher.fromEnvironment();
   }
 
-  tokenContext(credentialContextId, tokenType) {
-    return `${this.provider}:${credentialContextId}:${tokenType}`;
+  tokenContext(credentialId, tokenType) {
+    return `${this.provider}:${credentialId}:${tokenType}`;
   }
 
-  encryptToken(connectionId, tokenType, token) {
-    return JSON.stringify(this.tokenCipher.encrypt(token, this.tokenContext(connectionId, tokenType)));
+  encryptToken(credentialId, tokenType, token) {
+    if (token === undefined || token === null) return null;
+    return JSON.stringify(this.tokenCipher.encrypt(token, this.tokenContext(credentialId, tokenType)));
   }
 
   decryptConnection(row) {
@@ -67,46 +74,84 @@ class DatabaseConnectionStore {
     return {
       ...connection,
       accessToken: accessTokenEncrypted
-        ? this.tokenCipher.decrypt(accessTokenEncrypted, this.tokenContext(connection.oauthGrantId, "access"))
+        ? this.tokenCipher.decrypt(
+          accessTokenEncrypted,
+          this.tokenContext(connection.credentialId, "access"),
+        )
         : null,
       refreshToken: refreshTokenEncrypted
-        ? this.tokenCipher.decrypt(refreshTokenEncrypted, this.tokenContext(connection.oauthGrantId, "refresh"))
+        ? this.tokenCipher.decrypt(
+          refreshTokenEncrypted,
+          this.tokenContext(connection.credentialId, "refresh"),
+        )
         : null,
     };
   }
 
-  async save(connection) {
-    if (connection.provider !== this.provider) throw new Error("Connection provider does not match its store.");
-    const row = await this.persistence.saveOAuthConnection({
-      ...connection,
-      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", connection.accessToken),
-      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", connection.refreshToken),
+  async saveAuthorization(connections, tokens) {
+    if (!connections.length) return [];
+    if (connections.some((connection) => connection.provider !== this.provider)) {
+      throw new Error("Connection provider does not match its store.");
+    }
+
+    const credential = await this.persistence.createOAuthCredential(this.provider);
+    const credentialId = credentialIdFrom(credential);
+    await this.persistence.updateOAuthCredentialTokens(credentialId, {
+      accessTokenEncrypted: this.encryptToken(credentialId, "access", tokens.accessToken),
+      refreshTokenEncrypted: this.encryptToken(credentialId, "refresh", tokens.refreshToken),
+      expiresAt: tokens.expiresAt,
+      status: tokens.status || "active",
     });
-    return this.decryptConnection(row);
+
+    const rows = [];
+    for (const connection of connections) {
+      rows.push(await this.persistence.saveOAuthConnection(connection, credentialId));
+    }
+    return rows.map((row) => this.decryptConnection(row));
+  }
+
+  async save(connection) {
+    const [saved] = await this.saveAuthorization([connection], {
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+      expiresAt: connection.expiresAt,
+      status: connection.status,
+    });
+    return saved;
   }
 
   async getByConnectionId(connectionId) {
-    return this.decryptConnection(await this.persistence.getOAuthConnectionById(connectionId, this.provider));
+    const row = await this.persistence.getOAuthConnectionById(connectionId, this.provider);
+    return this.decryptConnection(row);
   }
 
   async updateTokens(connectionId, tokens) {
     const connection = await this.getByConnectionId(connectionId);
     if (!connection) return null;
-    const row = await this.persistence.updateOAuthGrantTokens(connectionId, this.provider, {
-      accessTokenEncrypted: this.encryptToken(connection.oauthGrantId, "access", tokens.accessToken),
-      refreshTokenEncrypted: this.encryptToken(connection.oauthGrantId, "refresh", tokens.refreshToken),
+    await this.persistence.updateOAuthCredentialTokens(connection.credentialId, {
+      accessTokenEncrypted: this.encryptToken(connection.credentialId, "access", tokens.accessToken),
+      refreshTokenEncrypted: this.encryptToken(connection.credentialId, "refresh", tokens.refreshToken),
       expiresAt: tokens.expiresAt,
+      status: tokens.status || "active",
     });
-    return this.decryptConnection(row);
+    return this.getByConnectionId(connectionId);
   }
 
   async deleteByConnectionId(connectionId) {
-    await this.persistence.deleteOAuthConnection(connectionId, this.provider);
-    return true;
+    const result = await this.persistence.deleteOAuthConnection(connectionId, this.provider);
+    return result?.deleted !== false;
   }
 
   async markReauthorizationRequired(connectionId) {
-    return this.persistence.markOAuthGrantReauthorizationRequired(connectionId, this.provider);
+    const connection = await this.getByConnectionId(connectionId);
+    if (!connection) return null;
+    await this.persistence.updateOAuthCredentialTokens(connection.credentialId, {
+      accessTokenEncrypted: null,
+      refreshTokenEncrypted: null,
+      expiresAt: null,
+      status: "reauthorization_required",
+    });
+    return this.getByConnectionId(connectionId);
   }
 
   async list() {

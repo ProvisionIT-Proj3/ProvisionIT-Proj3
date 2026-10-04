@@ -4,7 +4,16 @@ const { mock } = require("node:test");
 
 // dataService.getAccounts must return canonical rows (id/code/name/drCr/...),
 // not the raw Xero Accounts/TrialBalance shape (AccountID/Code/Name/...).
-// Mock both connector calls so this exercises only the mapping seam.
+// Mock connection resolution to "xero" and both connector calls so this
+// exercises only the mapping seam.
+mock.module("../src/auth/index.js", {
+  exports: {
+    registry: {
+      resolveProvider: async () => "xero",
+    },
+  },
+});
+
 mock.module("../src/connector/xero/accounts.js", {
   exports: {
     getAccounts: async () => [

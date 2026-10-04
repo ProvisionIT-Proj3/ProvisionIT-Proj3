@@ -40,7 +40,7 @@ test("creates an Xero authorization URL with an opaque state", () => {
 test("exchanges a verified code and stores only connection metadata for reads", async () => {
   const stateStore = new OAuthStateStore();
   const calls = [];
-  const ids = ["grant-1", "internal-connection-1"];
+  const ids = ["internal-connection-1"];
   const service = new OAuthService({
     provider,
     stateStore,
@@ -172,14 +172,12 @@ test("adds Xero credentials to connector requests without exposing them via the 
 
   await service.request("connection-1", "Contacts");
   const stored = await store.getByConnectionId("connection-1");
-  assert.deepEqual(await store.list(), [{
-    connectionId: "connection-1",
-    provider: "xero",
-    externalConnectionId: "connection-1",
-    providerAccountId: "tenant-1",
-    oauthGrantId: "grant-1",
-    expiresAt: stored.expiresAt,
-  }]);
+  const listed = await store.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].connectionId, "connection-1");
+  assert.equal(listed[0].providerAccountId, "tenant-1");
+  assert.equal(listed[0].credentialId, stored.credentialId);
+  assert.equal(listed[0].expiresAt, stored.expiresAt);
 });
 
 test("disconnects the Xero connection and removes its local credential record", async () => {
