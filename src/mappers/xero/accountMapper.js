@@ -54,13 +54,12 @@ function mapXeroTaxCode(xeroTaxType) {
  * info, both of which only exist on the TrialBalance side.
  *
  * @param {object} xeroAccount
- * @returns {{ id: string, code: string, nativeCode: string|undefined, name: string, type: string, class: string, taxCode: string }}
+ * @returns {{ id: string, code: string, name: string, type: string, class: string, taxCode: string }}
  */
 function mapXeroAccountDimension(xeroAccount) {
   return {
     id: xeroAccount.AccountID,
-    code: xeroAccount.AccountID,
-    nativeCode: xeroAccount.Code,
+    code: xeroAccount.Code,
     name: xeroAccount.Name,
     type: xeroAccount.Type,
     class: xeroAccount.Class,
@@ -150,7 +149,6 @@ function buildXeroAccounts(rawAccounts, rawTrialBalanceReport) {
     const sectionCredit = section.summary?.credit ?? section.rows.reduce((sum, r) => sum + r.credit, 0);
     const headerDrCr = sectionDebit >= sectionCredit ? 'Dr' : 'Cr';
 
-
     const headerCode = `HDR-${sectionIndex}`;
 
     result.push({
@@ -185,7 +183,6 @@ function buildXeroAccounts(rawAccounts, rawTrialBalanceReport) {
         taxCode: dimension.taxCode,
         _vendorSpecific: {
           class: dimension.class,
-          nativeCode: dimension.nativeCode,
           matchedToAccountsList: Boolean(dimension.id),
         },
       });

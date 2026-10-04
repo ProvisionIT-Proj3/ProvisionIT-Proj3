@@ -47,7 +47,7 @@ const PAYMENT_SCHEMA = {
 const ACCOUNT_SCHEMA = {
   id: { required: true, description: 'Vendor-native identifier for the account (or a synthetic id for a header row)' },
   sourceSystem: { required: true, description: "Origin platform: 'xero' | 'myob' | 'quickbooks'" },
-  code: { required: false, description: "Account # — the account's code (blank for synthesized header rows)" },
+  code: { required: false, description: "Account # — the account's code (synthesized, e.g. 'HDR-N', for header rows without a native identifier)" },
   name: { required: true, description: 'Account — the account or section name' },
   type: { required: false, description: 'Type — specific account type/class (e.g. Bank, Cost of Sales)' },
   drCr: { required: false, description: "Dr/Cr — normal balance side, 'Dr' or 'Cr'" },
