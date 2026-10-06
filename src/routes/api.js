@@ -1,26 +1,27 @@
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
+const { requireConnectionId } = require("../services/validation");
 
 function getConnectionId(req) {
-  const connectionId = req.query.connectionId;
-
-  if (!connectionId) {
-    const err = new Error("connectionId is required.");
-    err.status = 400;
-    err.code = "MISSING_CONNECTION_ID";
-    throw err;
-  }
-
-  return connectionId;
+  return requireConnectionId(req.query.connectionId);
 }
 
+// Stored accounts, in report order. Optional ?page= and ?pageSize=.
 router.get("/accounts", async (req, res, next) => {
   try {
     const connectionId = getConnectionId(req);
-    const result = await dataService.getAccounts(connectionId);
+    res.json(await dataService.getAccounts(connectionId, req.query));
+  } catch (error) {
+    next(error);
+  }
+});
 
-    res.json(result);
+// Fetch accounts from the accounting system and store them.
+router.post("/sync", async (req, res, next) => {
+  try {
+    const connectionId = getConnectionId(req);
+    res.json(await dataService.syncAccounts(connectionId));
   } catch (error) {
     next(error);
   }
@@ -29,9 +30,7 @@ router.get("/accounts", async (req, res, next) => {
 router.get("/trial-balance", async (req, res, next) => {
   try {
     const connectionId = getConnectionId(req);
-    const result = await dataService.getTrialBalance(connectionId);
-
-    res.json(result);
+    res.json(await dataService.getTrialBalance(connectionId));
   } catch (error) {
     next(error);
   }
