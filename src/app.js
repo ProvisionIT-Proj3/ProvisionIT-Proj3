@@ -1,14 +1,15 @@
 const express = require("express");
 const apiRoutes = require("./routes/api");
 const { router: authRoutes } = require("./auth/xero");
+const { guardConnectionRoutes } = require("./middleware/auth");
 
 const app = express();
 app.use(express.json());
 
 app.use("/api/v1", apiRoutes);
-app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/auth", guardConnectionRoutes, authRoutes);
 // Xero's registered callback currently uses this non-versioned path.
-app.use("/auth", authRoutes);
+app.use("/auth", guardConnectionRoutes, authRoutes);
 
 // Standard error format for all failures (FR-12: handle & log failures)
 app.use((err, req, res, next) => {

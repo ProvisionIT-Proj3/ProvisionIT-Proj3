@@ -1,21 +1,24 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mock } = require("node:test");
+const { inject } = require("./helpers/inject");
 
-// dataService.getAccounts must return canonical rows (id/code/name/drCr/...),
-// not the raw Xero Accounts/TrialBalance shape (AccountID/Code/Name/...).
-// Mock connection resolution to "xero" and both connector calls so this
-// exercises only the mapping seam.
-mock.module("../src/auth/index.js", {
-  exports: {
-    registry: {
-      resolveProvider: async () => "xero",
-    },
+// syncAccounts must hand canonical rows (id/code/name/drCr/...) to the
+// database, not the raw Xero Accounts/TrialBalance shape (AccountID/Code/Name/...).
+// Connection resolution is faked as "xero", and so are both Xero calls and
+// the database, so this exercises only the mapping seam.
+inject("../src/auth/index.js", {
+  registry: { resolveProvider: async () => "xero" },
+});
+
+const saved = [];
+inject("../src/persistence.js", {
+  saveAccounts: async (connectionId, accounts, reportDate) => {
+    saved.push({ connectionId, accounts, reportDate });
+    return { saved: accounts.length };
   },
 });
 
-mock.module("../src/connector/xero/accounts.js", {
-  exports: {
+inject("../src/connector/xero/accounts.js", {
     getAccounts: async () => [
       {
         AccountID: "7279b388-6715-4e7b-8f43-d882f4e4615a",
@@ -26,11 +29,9 @@ mock.module("../src/connector/xero/accounts.js", {
         TaxType: "OUTPUT",
       },
     ],
-  },
 });
 
-mock.module("../src/connector/xero/trialBalance.js", {
-  exports: {
+inject("../src/connector/xero/trialBalance.js", {
     getTrialBalance: async () => ({
       ReportID: "TrialBalance",
       Rows: [
@@ -59,18 +60,21 @@ mock.module("../src/connector/xero/trialBalance.js", {
         },
       ],
     }),
-  },
 });
 
 const dataService = require("../src/services/dataService");
 
-test("getAccounts returns canonical account rows, not raw Xero fields", async () => {
-  const result = await dataService.getAccounts("11111111-1111-1111-1111-111111111111");
+test("syncAccounts stores canonical account rows, not raw Xero fields", async () => {
+  saved.length = 0;
+  const connectionId = "11111111-1111-1111-1111-111111111111";
+  const result = await dataService.syncAccounts(connectionId);
 
-  assert.equal(result.data.length, 2); // synthesized section header + the one detail row
-  assert.equal(result.pagination.totalItems, 2);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].connectionId, connectionId);
+  assert.match(saved[0].reportDate, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(result.data.saved, 2);
 
-  const [header, detail] = result.data;
+  const [header, detail] = saved[0].accounts; // synthesized section header + the one detail row
 
   assert.equal(header.isHeader, true);
   assert.equal(header.name, "Revenue");
