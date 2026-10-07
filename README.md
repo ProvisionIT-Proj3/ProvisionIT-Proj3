@@ -61,7 +61,24 @@ Every failure uses the same shape:
 | 400 | `INVALID_PARAMETER` | bad UUID, or `page` / `pageSize` not a positive whole number |
 | 404 | `CONNECTION_NOT_FOUND` | unknown `connectionId` |
 
-## Known gaps
+## Access control
 
-- `/api/v1` and `/auth/*` have no authentication yet.
-- `DELETE /auth/<provider>/connections/:id` is unprotected.
+Off by default. Set `AUTH_REQUIRED=true` (plus `SUPABASE_URL` and `SUPABASE_ANON_KEY`)
+and every call must send `Authorization: Bearer <Supabase access token>`.
+The user's role is read from `user_profiles`.
+
+| Who | Can do |
+|---|---|
+| any role | `GET /accounts`, `GET /trial-balance`, `GET /auth/<provider>/connections` |
+| `ADMIN_ROLE` (default `admin`) | the above, plus `POST /sync` and `DELETE /auth/<provider>/connections/:id` |
+| nobody (open on purpose) | `/auth/<provider>/connect` and `/callback`, because the browser is redirected through them |
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `UNAUTHENTICATED` / `INVALID_TOKEN` | no token, or a bad / expired one |
+| 403 | `NO_ROLE` / `FORBIDDEN` | user has no role, or is not an admin |
+| 503 | `AUTH_UNAVAILABLE` | the login service could not be reached |
+| 500 | `AUTH_NOT_CONFIGURED` | auth is on but the Supabase settings are missing |
+
+All of the token checking is in `src/middleware/auth.js`. If the login system
+changes, only `verifyToken()` there needs replacing.
