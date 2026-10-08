@@ -6,8 +6,11 @@ const { guardConnectionRoutes } = require("./middleware/auth");
 const app = express();
 app.use(express.json());
 
-app.use("/api/v1", apiRoutes);
+// Mounted before /api/v1 so these routes (and guardConnectionRoutes' open
+// /connect and /callback) are matched first — otherwise apiRoutes' blanket
+// authenticate middleware would run first for anything under /api/v1/auth.
 app.use("/api/v1/auth", guardConnectionRoutes, authRoutes);
+app.use("/api/v1", apiRoutes);
 // Xero's registered callback currently uses this non-versioned path.
 app.use("/auth", guardConnectionRoutes, authRoutes);
 

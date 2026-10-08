@@ -2,11 +2,10 @@
   "name": "provision-it-canonical-mapping-poc",
   "version": "0.1.0",
   "description": "Proof of concept: canonical data model & vendor mapping layer for the Provision IT accounting middleware (Xero / MYOB / QuickBooks)",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "demo": "node runDemo.js",
-    "transform": "node transform.js",
     "accounts-report": "node buildXeroAccountsReport.js",
     "test": "node --experimental-test-module-mocks --test"
   },

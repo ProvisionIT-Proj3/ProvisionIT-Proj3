@@ -116,127 +116,6 @@ async function setUserRole(userId, role) {
   return result.rows[0];
 }
 
-// ---------- CUSTOMERS ----------
-
-async function saveCustomer(connectionId, customer) {
-  const result = await pool.query(
-    `INSERT INTO customers (connection_id, source_id, name, email, phone, status)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (connection_id, source_id) DO UPDATE
-       SET name = EXCLUDED.name, email = EXCLUDED.email,
-           phone = EXCLUDED.phone, status = EXCLUDED.status, updated_at = now()
-     RETURNING *`,
-    [connectionId, customer.sourceId, customer.name, customer.email, customer.phone, customer.status || 'active']
-  );
-  return result.rows[0];
-}
-
-async function getCustomersByConnection(connectionId) {
-  const result = await pool.query(
-    `SELECT * FROM customers WHERE connection_id = $1 ORDER BY name`,
-    [connectionId]
-  );
-  return result.rows;
-}
-
-// ---------- INVOICES ----------
-
-async function saveInvoice(customerId, invoice) {
-  const result = await pool.query(
-    `INSERT INTO invoices (customer_id, source_id, amount, status, type, issue_date, due_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (customer_id, source_id) DO UPDATE
-       SET amount = EXCLUDED.amount, status = EXCLUDED.status,
-           type = EXCLUDED.type, due_date = EXCLUDED.due_date
-     RETURNING *`,
-    [customerId, invoice.sourceId, invoice.amount, invoice.status, invoice.type || 'sales_invoice', invoice.issueDate, invoice.dueDate]
-  );
-  return result.rows[0];
-}
-
-async function getInvoicesByConnection(connectionId, filters = {}) {
-  const conditions = [`c.connection_id = $1`];
-  const params = [connectionId];
-  let i = 2;
-
-  if (filters.status) {
-    conditions.push(`i.status = $${i++}`);
-    params.push(filters.status);
-  }
-  if (filters.search) {
-    conditions.push(`c.name ILIKE $${i++}`);
-    params.push(`%${filters.search}%`);
-  }
-  if (filters.fromDate) {
-    conditions.push(`i.issue_date >= $${i++}`);
-    params.push(filters.fromDate);
-  }
-  if (filters.toDate) {
-    conditions.push(`i.issue_date <= $${i++}`);
-    params.push(filters.toDate);
-  }
-
-  const page = filters.page || 1;
-  const pageSize = Math.min(filters.pageSize || 25, 100);
-  const offset = (page - 1) * pageSize;
-
-  const query = `
-    SELECT i.*, c.name AS customer_name
-    FROM invoices i
-    JOIN customers c ON c.customer_id = i.customer_id
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY i.issue_date DESC
-    LIMIT ${pageSize} OFFSET ${offset}
-  `;
-  const countQuery = `
-    SELECT COUNT(*) FROM invoices i
-    JOIN customers c ON c.customer_id = i.customer_id
-    WHERE ${conditions.join(' AND ')}
-  `;
-
-  const [rows, count] = await Promise.all([
-    pool.query(query, params),
-    pool.query(countQuery, params),
-  ]);
-
-  return {
-    data: rows.rows,
-    pagination: { page, pageSize, totalItems: parseInt(count.rows[0].count, 10) },
-  };
-}
-
-// ---------- PAYMENTS ----------
-
-async function savePayment(invoiceId, payment) {
-  const result = await pool.query(
-    `INSERT INTO payments (invoice_id, source_id, amount, payment_date, method, status)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (invoice_id, source_id) DO UPDATE
-       SET amount = EXCLUDED.amount, status = EXCLUDED.status
-     RETURNING *`,
-    [invoiceId, payment.sourceId, payment.amount, payment.paymentDate, payment.method, payment.status || 'completed']
-  );
-  return result.rows[0];
-}
-
-async function getPaymentsByConnection(connectionId, filters = {}) {
-  const page = filters.page || 1;
-  const pageSize = Math.min(filters.pageSize || 25, 100);
-  const offset = (page - 1) * pageSize;
-
-  const result = await pool.query(
-    `SELECT p.*, i.customer_id
-     FROM payments p
-     JOIN invoices i ON i.invoice_id = p.invoice_id
-     JOIN customers c ON c.customer_id = i.customer_id
-     WHERE c.connection_id = $1
-     ORDER BY p.payment_date DESC
-     LIMIT $2 OFFSET $3`,
-    [connectionId, pageSize, offset]
-  );
-  return result.rows;
-}
-
 // ---------- ACCOUNTS ----------
 
 // Accounts are stored as the assembled report (header rows + detail rows), so
@@ -343,9 +222,6 @@ module.exports = {
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   getUserRole, setUserRole,
-  saveCustomer, getCustomersByConnection,
-  saveInvoice, getInvoicesByConnection,
-  savePayment, getPaymentsByConnection,
   getAccountsByConnection, saveAccounts,
   logActivity, getActivityLog,
 };
