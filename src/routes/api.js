@@ -1,37 +1,43 @@
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
+const { requireConnectionId } = require("../services/validation");
+const { authenticate, requireAdmin } = require("../middleware/auth");
 
-// All routes are read-only GET endpoints, per FR-10.
-// Company scoping uses a connectionId query param for now (temporary,
-// pending team decision — see API design doc open item 1).
+// Every API route needs a login when AUTH_REQUIRED=true (no-op otherwise).
+router.use(authenticate);
 
-router.get("/customers", async (req, res, next) => {
+function getConnectionId(req) {
+  return requireConnectionId(req.query.connectionId);
+}
+
+// Stored accounts, in report order. Optional ?page= and ?pageSize=.
+router.get("/accounts", async (req, res, next) => {
   try {
-    res.json(await dataService.getCustomers(req.query));
-  } catch (err) {
-    next(err);
+    const connectionId = getConnectionId(req);
+    res.json(await dataService.getAccounts(connectionId, req.query));
+  } catch (error) {
+    next(error);
   }
 });
 
-router.get("/invoices", async (req, res, next) => {
+// Fetch accounts from the accounting system and store them. Admin only.
+router.post("/sync", requireAdmin, async (req, res, next) => {
   try {
-    res.json(await dataService.getInvoices(req.query));
-  } catch (err) {
-    next(err);
+    const connectionId = getConnectionId(req);
+    res.json(await dataService.syncAccounts(connectionId));
+  } catch (error) {
+    next(error);
   }
 });
 
-router.get("/payments", async (req, res, next) => {
+router.get("/trial-balance", async (req, res, next) => {
   try {
-    res.json(await dataService.getPayments(req.query));
-  } catch (err) {
-    next(err);
+    const connectionId = getConnectionId(req);
+    res.json(await dataService.getTrialBalance(connectionId));
+  } catch (error) {
+    next(error);
   }
-});
-
-router.get("/accounts", (req, res, next) => {
-  try { res.json(dataService.getAccounts(req.query)); } catch (err) { next(err); }
 });
 
 module.exports = router;

@@ -1,0 +1,11 @@
+[
+  { "AccountID": "acc-001", "Code": "090", "Name": "Business Bank Account", "Type": "BANK", "Class": "ASSET", "Status": "ACTIVE", "TaxType": "NONE" },
+  { "AccountID": "acc-002", "Code": "610", "Name": "Accounts Receivable", "Type": "CURRENT", "Class": "ASSET", "Status": "ACTIVE", "TaxType": "NONE" },
+  { "AccountID": "acc-003", "Code": "720", "Name": "Office Equipment", "Type": "FIXED", "Class": "ASSET", "Status": "ACTIVE", "TaxType": "INPUT2" },
+  { "AccountID": "acc-004", "Code": "800", "Name": "Accounts Payable", "Type": "CURRLIAB", "Class": "LIABILITY", "Status": "ACTIVE", "TaxType": "NONE" },
+  { "AccountID": "acc-005", "Code": "960", "Name": "Owner's Equity", "Type": "EQUITY", "Class": "EQUITY", "Status": "ACTIVE", "TaxType": "NONE" },
+  { "AccountID": "acc-006", "Code": "200", "Name": "Sales", "Type": "SALES", "Class": "REVENUE", "Status": "ACTIVE", "TaxType": "OUTPUT2" },
+  { "AccountID": "acc-007", "Code": "310", "Name": "Cost of Goods Sold", "Type": "DIRECTCOSTS", "Class": "EXPENSE", "Status": "ACTIVE", "TaxType": "INPUT2" },
+  { "AccountID": "acc-008", "Code": "469", "Name": "Rent Expense", "Type": "EXPENSE", "Class": "EXPENSE", "Status": "ACTIVE", "TaxType": "INPUT2" },
+  { "AccountID": "acc-009", "Code": "270", "Name": "Interest Income", "Type": "OTHERINCOME", "Class": "REVENUE", "Status": "ACTIVE", "TaxType": "NONE" }
+]

@@ -1,23 +1,28 @@
-require("dotenv").config();
-
 const express = require("express");
 const apiRoutes = require("./routes/api");
+const { router: authRoutes } = require("./auth/xero");
+const { guardConnectionRoutes } = require("./middleware/auth");
+
 const app = express();
 app.use(express.json());
+
+// Mounted before /api/v1 so these routes (and guardConnectionRoutes' open
+// /connect and /callback) are matched first — otherwise apiRoutes' blanket
+// authenticate middleware would run first for anything under /api/v1/auth.
+app.use("/api/v1/auth", guardConnectionRoutes, authRoutes);
 app.use("/api/v1", apiRoutes);
+// Xero's registered callback currently uses this non-versioned path.
+app.use("/auth", guardConnectionRoutes, authRoutes);
+
 // Standard error format for all failures (FR-12: handle & log failures)
 app.use((err, req, res, next) => {
-  console.error(err.message);
-  console.error(err.stack);
+  console.error(err.message); // placeholder logging — replace with real logger in Sprint 3
   res.status(err.status || 500).json({
     error: {
-      code: err.status === 400 ? "INVALID_PARAMETER" : "SERVER_ERROR",
+      code: err.code || (err.status === 400 ? "INVALID_PARAMETER" : "SERVER_ERROR"),
       message: err.message || "Something went wrong.",
     },
   });
 });
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Middleware API running on http://localhost:${PORT}`);
-});
+
 module.exports = app;

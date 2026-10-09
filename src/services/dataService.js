@@ -1,99 +1,88 @@
-const persistence = require("../persistence"); // Giorgio's DB functions
+const persistence = require("../persistence");
+const { registry } = require("../auth");
+const { createConnector } = require("../connector/connectorFactory");
+const { toCanonicalList } = require("./canonicalMapper");
+const { parsePagination } = require("./validation");
 
-// Middle layer: validates request params, applies pagination,
-// and wraps results in the standard response shape.
-// Now backed by the real database instead of mockStore.
+// Accounts are STORED, not fetched per request:
+//
+//   POST /sync      Xero/QuickBooks -> connector (+ mapper) -> saveAccounts -> DB
+//   GET  /accounts  DB -> canonical mapper -> portal
+//
+// The trial balance is still fetched live (it is a point-in-time report).
 
-function validatePagination(query) {
-  const page = query.page !== undefined ? parseInt(query.page) : 1;
-  const pageSize = query.pageSize !== undefined
-    ? Math.min(parseInt(query.pageSize), 100)
-    : 25;
-  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
-    const err = new Error("page and pageSize must be positive numbers.");
-    err.status = 400;
-    throw err;
-  }
-  return { page, pageSize };
+function notFound(message) {
+  const err = new Error(message);
+  err.status = 404;
+  err.code = "CONNECTION_NOT_FOUND";
+  return err;
 }
 
-function requireConnectionId(query) {
-  // TEMP: using a query param until the team confirms path vs query param
-  // for company/tenant scoping (see API design doc, open item 1).
-  if (!query.connectionId) {
-    const err = new Error("connectionId is required.");
-    err.status = 400;
-    throw err;
-  }
-  return query.connectionId;
+async function getConnector(connectionId) {
+  const provider = await registry.resolveProvider(connectionId);
+  if (!provider) throw notFound("Accounting connection not found.");
+  return createConnector(provider);
 }
 
-// Converts snake_case DB rows to camelCase for the API response
+// Casing only. Field renames and value normalisation happen in canonicalMapper.
 function toCamelCase(row) {
   const out = {};
   for (const key in row) {
-    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-    out[camelKey] = row[key];
+    out[key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] = row[key];
   }
   return out;
 }
 
-async function getCustomers(query) {
-  const connectionId = requireConnectionId(query);
-  const { page, pageSize } = validatePagination(query);
-  const rows = await persistence.getCustomersByConnection(connectionId);
+/**
+ * Read the stored accounts for a connection, in report order, paginated.
+ * Returns an empty list (with meta.lastSyncedAt = null) until a sync has run.
+ */
+async function getAccounts(connectionId, query = {}) {
+  const { page, pageSize } = parsePagination(query);
+
+  const connection = await persistence.getConnectionById(connectionId);
+  if (!connection) throw notFound("Accounting connection not found.");
+
+  // Already ordered by sort_order, so header rows sit above their detail rows.
+  const rows = await persistence.getAccountsByConnection(connectionId);
 
   const start = (page - 1) * pageSize;
   const paged = rows.slice(start, start + pageSize).map(toCamelCase);
 
   return {
-    data: paged,
+    data: toCanonicalList("account", paged, { sourceSystem: connection.platform }),
     pagination: {
       page,
       pageSize,
       totalItems: rows.length,
       totalPages: Math.ceil(rows.length / pageSize),
     },
-  };
-}
-
-async function getInvoices(query) {
-  const connectionId = requireConnectionId(query);
-  const { page, pageSize } = validatePagination(query);
-
-  const result = await persistence.getInvoicesByConnection(connectionId, {
-    status: query.status,
-    search: query.search,
-    fromDate: query.fromDate,
-    toDate: query.toDate,
-    page,
-    pageSize,
-  });
-
-  return {
-    data: result.data.map(toCamelCase),
-    pagination: {
-      ...result.pagination,
-      totalPages: Math.ceil(result.pagination.totalItems / pageSize),
-    },
-  };
-}
-function getAccounts(query) { return paginate(store.accounts, query); }
-
-async function getPayments(query) {
-  const connectionId = requireConnectionId(query);
-  const { page, pageSize } = validatePagination(query);
-  const rows = await persistence.getPaymentsByConnection(connectionId, { page, pageSize });
-
-  return {
-    data: rows.map(toCamelCase),
-    pagination: {
-      page,
-      pageSize,
-      totalItems: rows.length, // NOTE: not a true total count yet — persistence layer would need a count query added, same pattern as getInvoicesByConnection
-      totalPages: Math.ceil(rows.length / pageSize),
+    meta: {
+      lastSyncedAt: connection.last_synced_at ?? null,
+      reportDate: rows.length ? rows[0].report_date : null,
     },
   };
 }
 
-module.exports = { getCustomers, getInvoices, getPayments, getAccounts };
+/**
+ * Fetch the live account report from the accounting system and replace the
+ * stored snapshot for this connection.
+ */
+async function syncAccounts(connectionId) {
+  const connector = await getConnector(connectionId);
+  const accounts = await connector.getAccounts(connectionId);
+
+  // The trial balance is requested "as of today", so that is the report date.
+  const reportDate = new Date().toISOString().slice(0, 10);
+  const { saved } = await persistence.saveAccounts(connectionId, accounts, reportDate);
+
+  return { data: { saved, reportDate, syncedAt: new Date().toISOString() } };
+}
+
+async function getTrialBalance(connectionId) {
+  const connector = await getConnector(connectionId);
+  const trialBalance = await connector.getTrialBalance(connectionId);
+  return { data: trialBalance };
+}
+
+module.exports = { getAccounts, syncAccounts, getTrialBalance };
