@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const TokenCipher = require("../src/auth/core/tokenCipher");
 const DatabaseConnectionStore = require("../src/auth/core/databaseConnectionStore");
 
-function createFakePersistence() {
+function createFakePersistence({ failOnConnectionId } = {}) {
   const rows = new Map();
   const credentials = new Map();
   let nextCredential = 1;
@@ -24,6 +24,19 @@ function createFakePersistence() {
   return {
     rows,
     credentials,
+    async withTransaction(fn) {
+      const rowSnapshot = new Map(rows);
+      const credentialSnapshot = new Map(credentials);
+      try {
+        return await fn({ transaction: true });
+      } catch (error) {
+        rows.clear();
+        credentials.clear();
+        for (const [key, value] of rowSnapshot) rows.set(key, value);
+        for (const [key, value] of credentialSnapshot) credentials.set(key, value);
+        throw error;
+      }
+    },
     async createOAuthCredential(provider) {
       const row = {
         credential_id: `credential-${nextCredential++}`,
@@ -44,6 +57,9 @@ function createFakePersistence() {
       });
     },
     async saveOAuthConnection(connection, credentialId) {
+      if (connection.connectionId === failOnConnectionId) {
+        throw new Error("connection insert failed");
+      }
       const row = {
         connection_id: connection.connectionId,
         credential_id: credentialId,
@@ -98,8 +114,28 @@ function connection(connectionId, accountId) {
 test("database store reports an incomplete OAuth persistence contract", () => {
   assert.throws(
     () => new DatabaseConnectionStore({ provider: "xero", persistence: {} }),
-    /createOAuthCredential.*updateOAuthCredentialTokens.*saveOAuthConnection/,
+    /withTransaction.*createOAuthCredential.*updateOAuthCredentialTokens.*saveOAuthConnection/,
   );
+});
+
+test("multi-company authorization rolls back when the second connection fails", async () => {
+  const persistence = createFakePersistence({ failOnConnectionId: "connection-2" });
+  const { store } = createStore(persistence);
+
+  await assert.rejects(
+    store.saveAuthorization(
+      [connection("connection-1", "tenant-1"), connection("connection-2", "tenant-2")],
+      {
+        accessToken: "secret-access",
+        refreshToken: "secret-refresh",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      },
+    ),
+    /connection insert failed/,
+  );
+
+  assert.equal(persistence.credentials.size, 0);
+  assert.equal(persistence.rows.size, 0);
 });
 
 test("database store persists one encrypted credential for an authorization", async () => {

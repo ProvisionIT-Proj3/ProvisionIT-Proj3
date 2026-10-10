@@ -5,11 +5,18 @@ const ConnectionPersistenceAdapter = require("../src/auth/core/connectionPersist
 function createGioPersistence() {
   const rows = new Map();
   const credentials = new Map();
+  const clients = [];
+  const transactionClient = { transaction: true };
   let nextCredential = 1;
   return {
     rows,
     credentials,
-    async createConnection(connection) {
+    clients,
+    async withTransaction(fn) {
+      return fn(transactionClient);
+    },
+    async createConnection(connection, client) {
+      clients.push(client);
       const row = {
         connection_id: connection.connectionId,
         company_name: connection.companyName,
@@ -22,7 +29,8 @@ function createGioPersistence() {
       rows.set(row.connection_id, row);
       return row;
     },
-    async createCredential({ platform, status }) {
+    async createCredential({ platform, status }, client) {
+      clients.push(client);
       const row = {
         credential_id: `credential-${nextCredential++}`,
         platform,
@@ -31,7 +39,8 @@ function createGioPersistence() {
       credentials.set(row.credential_id, row);
       return row;
     },
-    async updateCredentialTokens(credentialId, tokens) {
+    async updateCredentialTokens(credentialId, tokens, client) {
+      clients.push(client);
       const existing = credentials.get(credentialId);
       const updated = {
         ...existing,
@@ -43,16 +52,19 @@ function createGioPersistence() {
       credentials.set(credentialId, updated);
       return updated;
     },
-    async linkConnectionToCredential(connectionId, credentialId) {
+    async linkConnectionToCredential(connectionId, credentialId, client) {
+      clients.push(client);
       const updated = { ...rows.get(connectionId), credential_id: credentialId };
       rows.set(connectionId, updated);
       return updated;
     },
-    async getTokensForConnection(connectionId) {
+    async getTokensForConnection(connectionId, client) {
+      clients.push(client);
       const row = rows.get(connectionId);
       return row ? credentials.get(row.credential_id) : null;
     },
-    async getConnectionById(connectionId) {
+    async getConnectionById(connectionId, client) {
+      clients.push(client);
       return rows.get(connectionId) || null;
     },
     async listConnections() {
@@ -68,7 +80,7 @@ test("adapter requires Gio's connection and credential persistence methods", () 
   assert.doesNotThrow(() => new ConnectionPersistenceAdapter(createGioPersistence()));
   assert.throws(
     () => new ConnectionPersistenceAdapter({}),
-    /createConnection.*createCredential.*updateCredentialTokens.*linkConnectionToCredential.*getTokensForConnection/,
+    /withTransaction.*createConnection.*createCredential.*updateCredentialTokens.*linkConnectionToCredential.*getTokensForConnection/,
   );
 });
 
@@ -95,6 +107,32 @@ test("adapter maps provider-neutral connection fields and joins its credential",
   assert.equal(saved.credential_id, credential.credential_id);
   assert.equal(saved.access_token, "encrypted-access");
   assert.equal(saved.credential_status, "active");
+});
+
+test("adapter keeps OAuth writes and reads on the transaction client", async () => {
+  const persistence = createGioPersistence();
+  const adapter = new ConnectionPersistenceAdapter(persistence);
+
+  await adapter.withTransaction(async (client) => {
+    const credential = await adapter.createOAuthCredential("xero", client);
+    await adapter.updateOAuthCredentialTokens(credential.credential_id, {
+      accessTokenEncrypted: "encrypted-access",
+      refreshTokenEncrypted: "encrypted-refresh",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      status: "active",
+    }, client);
+    await adapter.saveOAuthConnection({
+      connectionId: "connection-1",
+      provider: "xero",
+      externalConnectionId: "external-1",
+      providerAccountId: "tenant-1",
+      accountName: "Example Company",
+      metadata: {},
+    }, credential.credential_id, client);
+  });
+
+  assert.equal(persistence.clients.length, 6);
+  assert.ok(persistence.clients.every((client) => client?.transaction === true));
 });
 
 test("two connections can share one credential without duplicating tokens", async () => {

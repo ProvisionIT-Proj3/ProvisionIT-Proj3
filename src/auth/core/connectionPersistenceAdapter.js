@@ -1,4 +1,5 @@
 const REQUIRED_CONNECTION_METHODS = [
+  "withTransaction",
   "createConnection",
   "getConnectionById",
   "listConnections",
@@ -39,27 +40,31 @@ class ConnectionPersistenceAdapter {
     this.persistence = persistence;
   }
 
-  async createOAuthCredential(provider) {
+  withTransaction(fn) {
+    return this.persistence.withTransaction(fn);
+  }
+
+  async createOAuthCredential(provider, client) {
     const credential = await this.persistence.createCredential({
       platform: provider,
       status: "active",
-    });
+    }, client);
     if (!getCredentialId(credential)) {
       throw new Error("createCredential() did not return a credential_id.");
     }
     return credential;
   }
 
-  async updateOAuthCredentialTokens(credentialId, tokens) {
+  async updateOAuthCredentialTokens(credentialId, tokens, client) {
     return this.persistence.updateCredentialTokens(credentialId, {
       accessToken: tokens.accessTokenEncrypted,
       refreshToken: tokens.refreshTokenEncrypted,
       expiresAt: tokens.expiresAt,
       status: tokens.status,
-    });
+    }, client);
   }
 
-  async saveOAuthConnection(connection, credentialId) {
+  async saveOAuthConnection(connection, credentialId, client) {
     const created = await this.persistence.createConnection({
       connectionId: connection.connectionId,
       companyName: connection.accountName,
@@ -67,16 +72,16 @@ class ConnectionPersistenceAdapter {
       externalConnectionId: connection.externalConnectionId,
       externalAccountId: connection.providerAccountId,
       providerMetadata: connection.metadata,
-    });
+    }, client);
     const connectionId = created?.connection_id ?? created?.connectionId ?? connection.connectionId;
-    await this.persistence.linkConnectionToCredential(connectionId, credentialId);
-    return this.getOAuthConnectionById(connectionId, connection.provider);
+    await this.persistence.linkConnectionToCredential(connectionId, credentialId, client);
+    return this.getOAuthConnectionById(connectionId, connection.provider, client);
   }
 
-  async getOAuthConnectionById(connectionId, provider) {
-    const connection = await this.persistence.getConnectionById(connectionId);
+  async getOAuthConnectionById(connectionId, provider, client) {
+    const connection = await this.persistence.getConnectionById(connectionId, client);
     if (!connection || (connection.platform ?? connection.provider) !== provider) return null;
-    const credential = await this.persistence.getTokensForConnection(connectionId);
+    const credential = await this.persistence.getTokensForConnection(connectionId, client);
     return mergeConnectionAndCredential(connection, credential);
   }
 

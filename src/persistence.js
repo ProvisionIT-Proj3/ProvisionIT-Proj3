@@ -49,8 +49,8 @@ async function createConnection({
   return result.rows[0];
 }
 
-async function getConnectionById(connectionId) {
-  const result = await pool.query(
+async function getConnectionById(connectionId, client = pool) {
+  const result = await client.query(
     `SELECT * FROM connections WHERE connection_id = $1`,
     [connectionId]
   );
@@ -124,8 +124,8 @@ async function linkConnectionToCredential(connectionId, credentialId, client = p
 }
 
 // Gets a connection's current tokens by following its credential_id
-async function getTokensForConnection(connectionId) {
-  const result = await pool.query(
+async function getTokensForConnection(connectionId, client = pool) {
+  const result = await client.query(
     `SELECT oc.access_token,
             oc.refresh_token,
             oc.token_expires_at,
