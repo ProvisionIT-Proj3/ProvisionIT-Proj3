@@ -16,12 +16,19 @@ const pool = new Pool({
 
 // ---------- CONNECTIONS ----------
 
-async function createConnection({ companyName, platform, externalAccountId }) {
+async function createConnection({
+  companyName,
+  platform,
+  externalConnectionId = null,
+  externalAccountId,
+  providerMetadata = {},
+}) {
   const result = await pool.query(
-    `INSERT INTO connections (company_name, platform, status, external_account_id)
-     VALUES ($1, $2, 'active', $3)
+    `INSERT INTO connections
+       (company_name, platform, status, external_connection_id, external_account_id, provider_metadata)
+     VALUES ($1, $2, 'active', $3, $4, $5)
      RETURNING *`,
-    [companyName, platform, externalAccountId]
+    [companyName, platform, externalConnectionId, externalAccountId, providerMetadata]
   );
   return result.rows[0];
 }
@@ -48,37 +55,53 @@ async function deleteConnection(connectionId) {
 // Tokens live here, not on `connections`, because one Xero OAuth grant can cover
 // multiple organisations sharing the same rotating tokens (Yihan's multi-provider point).
 
-async function createCredential({ platform, accessToken, refreshToken, expiresAt }) {
+async function createCredential({
+  platform,
+  accessToken = null,
+  refreshToken = null,
+  expiresAt = null,
+  status = 'active',
+}) {
   const result = await pool.query(
-    `INSERT INTO oauth_credentials (platform, access_token, refresh_token, token_expires_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO oauth_credentials
+       (platform, access_token, refresh_token, token_expires_at, status)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [platform, accessToken, refreshToken, expiresAt]
+    [platform, accessToken, refreshToken, expiresAt, status]
   );
   return result.rows[0];
 }
 
 // Refreshing updates ONE row here — every connection referencing this credential_id
 // automatically sees the new token, no per-connection update loop needed.
-async function updateCredentialTokens(credentialId, { accessToken, refreshToken, expiresAt }) {
+async function updateCredentialTokens(
+  credentialId,
+  { accessToken, refreshToken, expiresAt, status = 'active' }
+) {
   const result = await pool.query(
     `UPDATE oauth_credentials
-     SET access_token = $1, refresh_token = $2, token_expires_at = $3
-     WHERE credential_id = $4
+     SET access_token = $1,
+         refresh_token = $2,
+         token_expires_at = $3,
+         status = $4,
+         updated_at = now()
+     WHERE credential_id = $5
      RETURNING *`,
-    [accessToken, refreshToken, expiresAt, credentialId]
+    [accessToken, refreshToken, expiresAt, status, credentialId]
   );
   return result.rows[0];
 }
 
-// Links a connection (one company/tenant) to a shared credential
-async function linkConnectionToCredential(connectionId, credentialId, externalAccountId) {
+// The provider account ID is saved when the connection is created. Linking a
+// credential must not be able to erase it during a later update.
+async function linkConnectionToCredential(connectionId, credentialId) {
   const result = await pool.query(
     `UPDATE connections
-     SET credential_id = $1, external_account_id = $2
-     WHERE connection_id = $3
-     RETURNING connection_id, company_name, platform, status, external_account_id, credential_id`,
-    [credentialId, externalAccountId, connectionId]
+     SET credential_id = $1
+     WHERE connection_id = $2
+     RETURNING connection_id, company_name, platform, status,
+               external_connection_id, external_account_id, provider_metadata, credential_id`,
+    [credentialId, connectionId]
   );
   return result.rows[0];
 }
@@ -86,7 +109,10 @@ async function linkConnectionToCredential(connectionId, credentialId, externalAc
 // Gets a connection's current tokens by following its credential_id
 async function getTokensForConnection(connectionId) {
   const result = await pool.query(
-    `SELECT oc.access_token, oc.refresh_token, oc.token_expires_at
+    `SELECT oc.access_token,
+            oc.refresh_token,
+            oc.token_expires_at,
+            oc.status AS credential_status
      FROM connections c
      JOIN oauth_credentials oc ON oc.credential_id = c.credential_id
      WHERE c.connection_id = $1`,
