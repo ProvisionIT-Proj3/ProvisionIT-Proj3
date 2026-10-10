@@ -14,6 +14,22 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
 
+// runs several queries as one unit, rolls back if any fail
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // ---------- CONNECTIONS ----------
 
 async function createConnection({
@@ -22,8 +38,8 @@ async function createConnection({
   externalConnectionId = null,
   externalAccountId,
   providerMetadata = {},
-}) {
-  const result = await pool.query(
+}, client = pool) {
+  const result = await client.query(
     `INSERT INTO connections
        (company_name, platform, status, external_connection_id, external_account_id, provider_metadata)
      VALUES ($1, $2, 'active', $3, $4, $5)
@@ -61,8 +77,8 @@ async function createCredential({
   refreshToken = null,
   expiresAt = null,
   status = 'active',
-}) {
-  const result = await pool.query(
+}, client = pool) {
+  const result = await client.query(
     `INSERT INTO oauth_credentials
        (platform, access_token, refresh_token, token_expires_at, status)
      VALUES ($1, $2, $3, $4, $5)
@@ -76,9 +92,10 @@ async function createCredential({
 // automatically sees the new token, no per-connection update loop needed.
 async function updateCredentialTokens(
   credentialId,
-  { accessToken, refreshToken, expiresAt, status = 'active' }
+  { accessToken, refreshToken, expiresAt, status = 'active' },
+  client = pool
 ) {
-  const result = await pool.query(
+  const result = await client.query(
     `UPDATE oauth_credentials
      SET access_token = $1,
          refresh_token = $2,
@@ -94,8 +111,8 @@ async function updateCredentialTokens(
 
 // The provider account ID is saved when the connection is created. Linking a
 // credential must not be able to erase it during a later update.
-async function linkConnectionToCredential(connectionId, credentialId) {
-  const result = await pool.query(
+async function linkConnectionToCredential(connectionId, credentialId, client = pool) {
+  const result = await client.query(
     `UPDATE connections
      SET credential_id = $1
      WHERE connection_id = $2
@@ -245,6 +262,7 @@ async function getActivityLog(connectionId, limit = 50) {
 }
 
 module.exports = {
+  withTransaction,
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   getUserRole, setUserRole,
