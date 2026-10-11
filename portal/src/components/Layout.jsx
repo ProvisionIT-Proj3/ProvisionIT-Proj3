@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { useConnection } from '../ConnectionContext';
 import { PLATFORM_LABELS } from '../constants';
 
@@ -13,6 +14,7 @@ const links = [
 
 export default function Layout() {
   const { connections, active, select } = useConnection();
+  const { status, email, signOut } = useAuth();
 
   return (
     <div className="shell">
@@ -46,6 +48,14 @@ export default function Layout() {
               {!connections.length && <option value="">No companies</option>}
             </select>
           </label>
+          {status === 'signedIn' && (
+            <div className="user-box">
+              <span>{email}</span>
+              <button className="btn ghost sm" onClick={signOut}>
+                Sign out
+              </button>
+            </div>
+          )}
         </header>
         {/* key remounts the page so filters and paging reset when the company changes */}
         <main className="content" key={active?.id ?? 'none'}>

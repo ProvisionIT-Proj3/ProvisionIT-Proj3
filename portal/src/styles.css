@@ -22,7 +22,7 @@ h1 { font-family: 'Roboto Slab', Georgia, serif; font-size: 24px; margin: 0; col
 .nav-item.active { background: rgba(255,255,255,.08); color: #fff; font-weight: 500; border-left-color: var(--amber); }
 
 .main { flex: 1; min-width: 0; }
-.topbar { display: flex; justify-content: flex-end; padding: 14px 44px; border-bottom: 1px solid var(--line); }
+.topbar { display: flex; justify-content: flex-end; align-items: center; gap: 24px; padding: 14px 44px; border-bottom: 1px solid var(--line); }
 .company-picker { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--soft); }
 .company-picker select, .filters select, .filters input { font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--text); }
 .content { padding: 32px 44px 44px; max-width: 1100px; }
@@ -64,3 +64,13 @@ table.is-loading { opacity: .5; }
 .error-text { color: var(--red); font-size: 13.5px; }
 tr.row-header td { font-weight: 600; background: rgba(15,61,62,.04); }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.user-box { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--soft); }
+.gate-note { padding: 40px; text-align: center; color: var(--soft); font-size: 14px; }
+.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card { width: 100%; max-width: 360px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+.login-card .brand { color: var(--ink-dark); padding: 0 0 16px; margin-bottom: 0; border-bottom: 1px solid var(--line); }
+.login-card .brand span { color: var(--soft); }
+.login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--soft); }
+.login-card input { font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); }
+.login-card .error-text { margin: 0; }

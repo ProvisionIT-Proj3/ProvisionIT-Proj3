@@ -11,7 +11,7 @@ npm run dev
 ```
 
 Opens on http://localhost:5173. In dev, `/api` is proxied to the middleware on
-http://localhost:3000 (see `vite.config.js`), so start that first (`node src/app.js` in the repo root).
+http://localhost:3000 (see `vite.config.js`), so start that first (`npm start` in the repo root).
 
 No backend handy? Run on sample data:
 
@@ -44,15 +44,25 @@ Errors are read from `{ error: { code, message } }`.
 Field names (`amount` or `total`, `name` or `displayName`, snake_case or camelCase) are mapped in
 `src/api/normalize.js`. If the response shape changes, that is the only file to touch.
 
+## Login
+
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (see `.env.example`) and the portal asks for an
+email and password before showing anything. The access token is sent to the API as
+`Authorization: Bearer <token>` (see `src/auth/`). With those two unset the portal opens straight to
+the app, which is what you want against a local API with `AUTH_REQUIRED=false`. Sample-data mode
+(`VITE_USE_MOCK=true`) never asks for a login.
+
+The user also needs a row in `user_profiles` on the API side, otherwise the API answers 403
+`NO_ROLE`. Only the `admin` role can sync. Steps are in `DEPLOY.md` at the repo root.
+
 ## Not built yet
 
-- Login and roles. `setTokenProvider` in `src/api/http.js` is where the Supabase token plugs in,
-  the portal then sends it as `Authorization: Bearer <token>`.
 - Create / disconnect connection, needs write endpoints on the backend first.
 - Dashboard and activity log, they need endpoints that return totals and log rows.
 - Invoices, Payments and Customers on real data (see above).
 
 ## Deploying
 
-The dev proxy only exists in dev. For a hosted build either serve the portal and the API from the
-same domain, or set `VITE_API_URL` to the API address and turn on CORS in the middleware.
+Full steps are in `DEPLOY.md` at the repo root. In short, on Vercel set Root Directory to `portal`,
+set `VITE_API_URL`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, and add the portal's address
+to `CORS_ORIGINS` on the API. `vercel.json` makes page refreshes on `/accounts` etc. work.
