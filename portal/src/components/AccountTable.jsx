@@ -14,7 +14,7 @@ export default function AccountTable({ list, onPage, emptyMessage }) {
           <td style={{ paddingLeft: 12 + Math.min(a.level, 4) * 18 }}>{a.name}</td>
           <td>{a.isHeader ? '' : (a.type ?? '—')}</td>
           <td>{a.drCr ?? '—'}</td>
-          <td className="num">{a.isHeader ? '' : formatMoney(a.value)}</td>
+          <td className="num">{a.value == null ? '' : formatMoney(a.value)}</td>
         </tr>
       )}
     />
