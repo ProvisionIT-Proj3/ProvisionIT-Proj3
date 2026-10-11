@@ -79,10 +79,15 @@ async function syncAccounts(connectionId) {
   return { data: { saved, reportDate, syncedAt: new Date().toISOString() } };
 }
 
+// Live trial balance in the same canonical shape as GET /accounts (a flat list
+// of header + detail rows), so every client reads it the same way. The raw
+// vendor report is not returned: it is a nested object that differs per platform.
 async function getTrialBalance(connectionId) {
   const connector = await getConnector(connectionId);
-  const trialBalance = await connector.getTrialBalance(connectionId);
-  return { data: trialBalance };
+  const accounts = await connector.getAccounts(connectionId);
+  // _vendorSpecific is mapper-internal detail, not part of the canonical shape.
+  const data = accounts.map(({ _vendorSpecific, ...account }) => account);
+  return { data, meta: { live: true, fetchedAt: new Date().toISOString() } };
 }
 
 module.exports = { getAccounts, syncAccounts, getTrialBalance };

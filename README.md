@@ -31,7 +31,7 @@ Create the accounts table once (see `db/migrations/001_create_accounts.sql`).
 |---|---|---|
 | GET | `/accounts?connectionId=<uuid>&page=1&pageSize=100` | Stored accounts in report order |
 | POST | `/sync?connectionId=<uuid>` | Fetch from the accounting system and replace the stored snapshot |
-| GET | `/trial-balance?connectionId=<uuid>` | Live trial balance |
+| GET | `/trial-balance?connectionId=<uuid>` | Live trial balance, same canonical list as `/accounts` (fetched from the accounting system, not stored) |
 
 `GET /accounts` returns:
 
