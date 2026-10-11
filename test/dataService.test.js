@@ -92,3 +92,21 @@ test("syncAccounts stores canonical account rows, not raw Xero fields", async ()
   assert.equal(detail.AccountID, undefined);
   assert.equal(detail.Code, undefined);
 });
+
+test("getTrialBalance returns a flat canonical list, not the raw Xero report", async () => {
+  const result = await dataService.getTrialBalance("11111111-1111-1111-1111-111111111111");
+
+  assert.ok(Array.isArray(result.data));
+  assert.equal(result.data.length, 2);
+
+  const [header, detail] = result.data;
+  assert.equal(header.isHeader, true);
+  assert.equal(header.name, "Revenue");
+  assert.equal(detail.name, "Sales");
+  assert.equal(detail.drCr, "Cr");
+  assert.equal(detail.value, 500);
+
+  // No raw Xero report fields and no mapper-internal fields.
+  assert.equal(result.data.Rows, undefined);
+  assert.equal(detail._vendorSpecific, undefined);
+});
