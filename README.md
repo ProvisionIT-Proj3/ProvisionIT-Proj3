@@ -82,3 +82,7 @@ The user's role is read from `user_profiles`.
 
 All of the token checking is in `src/middleware/auth.js`. If the login system
 changes, only `verifyToken()` there needs replacing.
+
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md) for hosting the API (Railway) and the portal (Vercel).
