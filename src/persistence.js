@@ -219,7 +219,58 @@ async function getActivityLog(connectionId, limit = 50) {
   return result.rows;
 }
 
+// which companies a normal user can see
+const ACCESS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function hasUserConnectionAccess(userId, connectionId, client = pool) {
+  if (!ACCESS_UUID_RE.test(String(userId)) || !ACCESS_UUID_RE.test(String(connectionId))) return false;
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM user_connection_access
+       WHERE user_id = $1 AND connection_id = $2
+     ) AS allowed`,
+    [userId, connectionId]
+  );
+  return result.rows[0].allowed === true;
+}
+
+// same columns as listConnections(), only the user's companies
+async function listConnectionsForUser(userId, client = pool) {
+  if (!ACCESS_UUID_RE.test(String(userId))) return [];
+  const result = await client.query(
+    `SELECT c.*
+     FROM connections c
+     JOIN user_connection_access a ON a.connection_id = c.connection_id
+     WHERE a.user_id = $1
+     ORDER BY c.date_connected DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+// granting twice is fine
+async function grantUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `INSERT INTO user_connection_access (user_id, connection_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, connection_id) DO UPDATE SET user_id = EXCLUDED.user_id
+     RETURNING *`,
+    [userId, connectionId]
+  );
+  return result.rows[0];
+}
+
+async function revokeUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `DELETE FROM user_connection_access WHERE user_id = $1 AND connection_id = $2`,
+    [userId, connectionId]
+  );
+  return { revoked: result.rowCount > 0 };
+}
+
 module.exports = {
+  hasUserConnectionAccess, listConnectionsForUser,
+  grantUserConnectionAccess, revokeUserConnectionAccess,
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   getUserRole, setUserRole,
