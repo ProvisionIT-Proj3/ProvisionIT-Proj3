@@ -1,6 +1,7 @@
 const TokenCipher = require("./tokenCipher");
 
 const REQUIRED_PERSISTENCE_METHODS = [
+  "withTransaction",
   "createOAuthCredential",
   "updateOAuthCredentialTokens",
   "saveOAuthConnection",
@@ -94,20 +95,22 @@ class DatabaseConnectionStore {
       throw new Error("Connection provider does not match its store.");
     }
 
-    const credential = await this.persistence.createOAuthCredential(this.provider);
-    const credentialId = credentialIdFrom(credential);
-    await this.persistence.updateOAuthCredentialTokens(credentialId, {
-      accessTokenEncrypted: this.encryptToken(credentialId, "access", tokens.accessToken),
-      refreshTokenEncrypted: this.encryptToken(credentialId, "refresh", tokens.refreshToken),
-      expiresAt: tokens.expiresAt,
-      status: tokens.status || "active",
-    });
+    return this.persistence.withTransaction(async (client) => {
+      const credential = await this.persistence.createOAuthCredential(this.provider, client);
+      const credentialId = credentialIdFrom(credential);
+      await this.persistence.updateOAuthCredentialTokens(credentialId, {
+        accessTokenEncrypted: this.encryptToken(credentialId, "access", tokens.accessToken),
+        refreshTokenEncrypted: this.encryptToken(credentialId, "refresh", tokens.refreshToken),
+        expiresAt: tokens.expiresAt,
+        status: tokens.status || "active",
+      }, client);
 
-    const rows = [];
-    for (const connection of connections) {
-      rows.push(await this.persistence.saveOAuthConnection(connection, credentialId));
-    }
-    return rows.map((row) => this.decryptConnection(row));
+      const rows = [];
+      for (const connection of connections) {
+        rows.push(await this.persistence.saveOAuthConnection(connection, credentialId, client));
+      }
+      return rows.map((row) => this.decryptConnection(row));
+    });
   }
 
   async save(connection) {
