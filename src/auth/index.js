@@ -11,6 +11,7 @@ const createQuickBooksRouter = require("./providers/quickbooks/router");
 const { getXeroConfig, assertXeroConfigured } = require("./providers/xero/config");
 const XeroProvider = require("./providers/xero/provider");
 const createXeroRouter = require("./providers/xero/router");
+const { authenticate, requirePermission } = require("../middleware/auth");
 
 function createConnectionStore(provider) {
   if (!process.env.DATABASE_URL) return new TestMemoryConnectionStore({ provider });
@@ -45,10 +46,14 @@ const router = express.Router();
 router.use(createXeroRouter({
   service: xeroOAuth,
   assertConfigured: () => assertXeroConfigured(xeroConfig),
+  authenticate,
+  requirePermission,
 }));
 router.use(createQuickBooksRouter({
   service: quickBooksOAuth,
   assertConfigured: () => assertQuickBooksConfigured(quickBooksConfig),
+  authenticate,
+  requirePermission,
 }));
 
 module.exports = { router, registry, xeroOAuth, quickBooksOAuth };

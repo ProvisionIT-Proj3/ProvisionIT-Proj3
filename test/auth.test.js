@@ -2,194 +2,249 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const express = require("express");
-const { inject } = require("./helpers/inject");
+const {
+  createAccessControl,
+  readBearerToken,
+} = require("../src/middleware/auth");
+const createXeroRouter = require("../src/auth/providers/xero/router");
+const createQuickBooksRouter = require("../src/auth/providers/quickbooks/router");
 
-const CONN = "5adce2dd-1331-4700-8600-c226221d89da";
+const AUTH_ON = { AUTH_REQUIRED: "true" };
 
-// Fakes: no real database, no OAuth config, no Supabase.
-const roles = { "u-admin": "admin", "u-staff": "staff", "u-norole": null };
-inject("../src/persistence.js", {
-  getUserRole: async (id) => roles[id] ?? null,
-  getConnectionById: async () => ({ connection_id: CONN, platform: "xero", last_synced_at: null }),
-  getAccountsByConnection: async () => [],
-  saveAccounts: async (c, a) => ({ saved: a.length }),
-});
-// Stand-in OAuth router with the same paths as the real ones, so we can check
-// which of them the guard protects.
-const oauth = express.Router();
-oauth.get("/xero/connect", (req, res) => res.json({ ok: "connect" }));
-oauth.get("/xero/callback", (req, res) => res.json({ ok: "callback" }));
-oauth.get("/xero/connections", (req, res) => res.json({ ok: "list" }));
-oauth.delete("/xero/connections/:id", (req, res) => res.json({ ok: "deleted" }));
-inject("../src/auth/index.js", {
-  registry: { resolveProvider: async () => "xero" },
-  router: oauth,
-});
-inject("../src/connector/connectorFactory.js", {
-  createConnector: () => ({ getAccounts: async () => [], getTrialBalance: async () => ({}) }),
-});
-
-const { createAuth } = require("../src/middleware/auth");
-
-// Tokens "t-admin", "t-staff", "t-norole" are valid; anything else is rejected.
-const tokenToUser = { "t-admin": "u-admin", "t-staff": "u-staff", "t-norole": "u-norole" };
-async function fakeVerify(token) {
-  if (token === "t-down") {
-    const e = new Error("down"); e.status = 503; e.code = "AUTH_UNAVAILABLE"; throw e;
-  }
-  if (!tokenToUser[token]) {
-    const e = new Error("bad"); e.status = 401; e.code = "INVALID_TOKEN"; throw e;
-  }
-  return { id: tokenToUser[token], email: `${tokenToUser[token]}@example.com` };
+function createDependencies({ role = "user", user = { id: "user-1", email: "user@example.com" } } = {}) {
+  return {
+    env: AUTH_ON,
+    getRole: async () => role,
+    supabaseClient: {
+      auth: {
+        getUser: async () => ({ data: { user }, error: null }),
+      },
+    },
+  };
 }
 
-// Build a fresh copy of the app's guarded routes for a given environment.
-function buildApp(env) {
-  const { authenticate, requireAdmin, guardConnectionRoutes } = createAuth({
-    verify: fakeVerify,
-    getRole: async (id) => roles[id] ?? null,
-    env,
+function requestWithAuthorization(authorization) {
+  return {
+    get(name) {
+      return name.toLowerCase() === "authorization" ? authorization : undefined;
+    },
+  };
+}
+
+function runMiddleware(middleware, req) {
+  return new Promise((resolve) => middleware(req, {}, resolve));
+}
+
+async function call(app, method, path, token, headers = {}) {
+  const server = http.createServer(app).listen(0, "127.0.0.1");
+  await new Promise((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
   });
-  const app = express();
-  const ok = (req, res) => res.json({ ok: true, user: req.user ?? null });
-  app.get("/api/v1/accounts", authenticate, ok);
-  app.post("/api/v1/sync", authenticate, requireAdmin, ok);
-  app.use("/auth", guardConnectionRoutes, oauth);
-  app.use((err, req, res, next) => res.status(err.status || 500).json({ error: { code: err.code, message: err.message } }));
-  return app;
-}
-
-async function call(app, method, path, token) {
-  const server = http.createServer(app).listen(0);
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
       method,
-      headers: token ? { authorization: `Bearer ${token}` } : {},
+      redirect: "manual",
+      headers: {
+        ...headers,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
     });
-    return { status: res.status, body: await res.json() };
+    const body = response.status === 204 ? null : await response.json();
+    return { body, headers: response.headers, status: response.status };
   } finally {
     server.close();
   }
 }
 
-// ---------- switch OFF (the default) ----------
-
-test("auth is OFF by default: no token needed anywhere", async () => {
-  const app = buildApp({});
-  assert.equal((await call(app, "GET", "/api/v1/accounts")).status, 200);
-  assert.equal((await call(app, "POST", "/api/v1/sync")).status, 200);
-  assert.equal((await call(app, "DELETE", "/auth/xero/connections/abc")).status, 200);
+test("accepts only a single Bearer token", () => {
+  assert.equal(readBearerToken("Bearer abc.def"), "abc.def");
+  assert.equal(readBearerToken("bearer token"), "token");
+  assert.equal(readBearerToken("Basic token"), null);
+  assert.equal(readBearerToken("Bearer"), null);
+  assert.equal(readBearerToken("Bearer one two"), null);
+  assert.equal(readBearerToken(undefined), null);
 });
 
-test("AUTH_REQUIRED=false keeps it off", async () => {
-  const app = buildApp({ AUTH_REQUIRED: "false" });
-  assert.equal((await call(app, "GET", "/api/v1/accounts")).status, 200);
+test("access control remains disabled until AUTH_REQUIRED is enabled", async () => {
+  const access = createAccessControl({ env: {}, getRole: async () => null });
+  const req = requestWithAuthorization();
+
+  assert.equal(await runMiddleware(access.authenticate, req), undefined);
+  assert.equal(await runMiddleware(access.requirePermission("connections:manage"), req), undefined);
 });
 
-// ---------- switch ON ----------
+test("authentication sets only the trusted user identity and database role", async () => {
+  const access = createAccessControl(createDependencies({ role: "admin" }));
+  const req = requestWithAuthorization("Bearer valid-token");
 
-const ON = { AUTH_REQUIRED: "true" };
-
-test("no token is a 401 UNAUTHENTICATED", async () => {
-  const res = await call(buildApp(ON), "GET", "/api/v1/accounts");
-  assert.equal(res.status, 401);
-  assert.equal(res.body.error.code, "UNAUTHENTICATED");
+  assert.equal(await runMiddleware(access.authenticate, req), undefined);
+  assert.deepEqual(req.user, {
+    id: "user-1",
+    email: "user@example.com",
+    role: "admin",
+  });
 });
 
-test("a bad token is a 401 INVALID_TOKEN", async () => {
-  const res = await call(buildApp(ON), "GET", "/api/v1/accounts", "garbage");
-  assert.equal(res.status, 401);
-  assert.equal(res.body.error.code, "INVALID_TOKEN");
+test("missing and invalid access tokens return distinct 401 errors", async () => {
+  const missingAccess = createAccessControl(createDependencies());
+  const missing = await runMiddleware(
+    missingAccess.authenticate,
+    requestWithAuthorization(),
+  );
+  assert.equal(missing.status, 401);
+  assert.equal(missing.code, "AUTHENTICATION_REQUIRED");
+
+  const dependencies = createDependencies();
+  dependencies.supabaseClient.auth.getUser = async () => ({
+    data: { user: null },
+    error: new Error("invalid JWT details"),
+  });
+  const invalidAccess = createAccessControl(dependencies);
+  const invalid = await runMiddleware(
+    invalidAccess.authenticate,
+    requestWithAuthorization("Bearer invalid-token"),
+  );
+  assert.equal(invalid.status, 401);
+  assert.equal(invalid.code, "INVALID_ACCESS_TOKEN");
+  assert.doesNotMatch(invalid.message, /JWT/i);
 });
 
-test("login service being down is a 503, not a 401", async () => {
-  const res = await call(buildApp(ON), "GET", "/api/v1/accounts", "t-down");
-  assert.equal(res.status, 503);
+test("authentication and role service failures return safe 503 errors", async () => {
+  const authDependencies = createDependencies();
+  authDependencies.supabaseClient.auth.getUser = async () => {
+    throw new Error("network details");
+  };
+  const authFailure = await runMiddleware(
+    createAccessControl(authDependencies).authenticate,
+    requestWithAuthorization("Bearer valid-token"),
+  );
+  assert.equal(authFailure.status, 503);
+  assert.equal(authFailure.code, "AUTHENTICATION_SERVICE_UNAVAILABLE");
+  assert.doesNotMatch(authFailure.message, /network/i);
+
+  const roleDependencies = createDependencies();
+  roleDependencies.getRole = async () => {
+    throw new Error("database password details");
+  };
+  const roleFailure = await runMiddleware(
+    createAccessControl(roleDependencies).authenticate,
+    requestWithAuthorization("Bearer valid-token"),
+  );
+  assert.equal(roleFailure.status, 503);
+  assert.equal(roleFailure.code, "AUTHORIZATION_SERVICE_UNAVAILABLE");
+  assert.doesNotMatch(roleFailure.message, /password/i);
 });
 
-test("a valid user with no role is a 403 NO_ROLE", async () => {
-  const res = await call(buildApp(ON), "GET", "/api/v1/accounts", "t-norole");
-  assert.equal(res.status, 403);
-  assert.equal(res.body.error.code, "NO_ROLE");
+test("roles enforce the agreed permission matrix and unknown roles fail closed", async () => {
+  const access = createAccessControl(createDependencies());
+  const user = { user: { id: "user-1", role: "user" } };
+  const admin = { user: { id: "admin-1", role: "admin" } };
+
+  assert.equal(await runMiddleware(access.requirePermission("accounting:read"), user), undefined);
+  for (const permission of ["accounting:sync", "connections:read", "connections:manage"]) {
+    const denied = await runMiddleware(access.requirePermission(permission), user);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.code, "INSUFFICIENT_PERMISSION");
+    assert.equal(await runMiddleware(access.requirePermission(permission), admin), undefined);
+  }
+
+  const unknownRole = await runMiddleware(
+    access.requirePermission("accounting:read"),
+    { user: { id: "unknown-1", role: "staff" } },
+  );
+  assert.equal(unknownRole.status, 403);
+  assert.equal(unknownRole.code, "INSUFFICIENT_PERMISSION");
 });
 
-test("any role can read accounts", async () => {
-  const res = await call(buildApp(ON), "GET", "/api/v1/accounts", "t-staff");
-  assert.equal(res.status, 200);
-  assert.equal(res.body.user.role, "staff");
+test("an authenticated user without a profile receives USER_PROFILE_REQUIRED", async () => {
+  const access = createAccessControl(createDependencies({ role: null }));
+  const req = requestWithAuthorization("Bearer valid-token");
+
+  assert.equal(await runMiddleware(access.authenticate, req), undefined);
+  const error = await runMiddleware(access.requirePermission("accounting:read"), req);
+  assert.equal(error.status, 403);
+  assert.equal(error.code, "USER_PROFILE_REQUIRED");
 });
 
-test("only admins can sync", async () => {
-  const app = buildApp(ON);
-  assert.equal((await call(app, "POST", "/api/v1/sync", "t-staff")).status, 403);
-  assert.equal((await call(app, "POST", "/api/v1/sync", "t-admin")).status, 200);
-});
-
-test("ADMIN_ROLE changes which role counts as admin", async () => {
-  const app = buildApp({ ...ON, ADMIN_ROLE: "staff" });
-  assert.equal((await call(app, "POST", "/api/v1/sync", "t-staff")).status, 200);
-  assert.equal((await call(app, "POST", "/api/v1/sync", "t-admin")).status, 403);
-});
-
-// ---------- OAuth connection routes ----------
-
-test("OAuth connect and callback stay open (the browser is redirected through them)", async () => {
-  const app = buildApp(ON);
-  assert.equal((await call(app, "GET", "/auth/xero/connect")).status, 200);
-  assert.equal((await call(app, "GET", "/auth/xero/callback")).status, 200);
-});
-
-test("listing connections needs a login", async () => {
-  const app = buildApp(ON);
-  assert.equal((await call(app, "GET", "/auth/xero/connections")).status, 401);
-  assert.equal((await call(app, "GET", "/auth/xero/connections", "t-staff")).status, 200);
-});
-
-test("deleting a connection needs an admin", async () => {
-  const app = buildApp(ON);
-  assert.equal((await call(app, "DELETE", "/auth/xero/connections/abc")).status, 401);
-  assert.equal((await call(app, "DELETE", "/auth/xero/connections/abc", "t-staff")).status, 403);
-  assert.equal((await call(app, "DELETE", "/auth/xero/connections/abc", "t-admin")).status, 200);
-});
-
-// ---------- misconfiguration fails closed ----------
-
-test("AUTH_REQUIRED=true without Supabase settings fails closed with 500", async () => {
+test("OAuth management requires admin access while callbacks remain available", async () => {
+  const users = {
+    "admin-token": { id: "admin-1", email: "admin@example.com" },
+    "user-token": { id: "user-1", email: "user@example.com" },
+  };
+  const access = createAccessControl({
+    env: AUTH_ON,
+    getRole: async (userId) => (userId === "admin-1" ? "admin" : "user"),
+    supabaseClient: {
+      auth: {
+        getUser: async (token) => ({
+          data: { user: users[token] || null },
+          error: users[token] ? null : new Error("invalid"),
+        }),
+      },
+    },
+  });
+  const authorizationMetadata = [];
+  const service = {
+    getAuthorizationUrl(metadata) {
+      authorizationMetadata.push(metadata);
+      return "https://login.example/authorize";
+    },
+    async completeAuthorization() {
+      return [];
+    },
+    async listConnections() {
+      return [];
+    },
+    async disconnect() {},
+  };
+  const dependencies = {
+    service,
+    assertConfigured() {},
+    authenticate: access.authenticate,
+    requirePermission: access.requirePermission,
+  };
   const app = express();
-  const { authenticate } = createAuth({ env: ON, getRole: async () => "admin" }); // real verifyToken
-  app.get("/x", authenticate, (req, res) => res.json({ ok: true }));
-  app.use((err, req, res, next) => res.status(err.status || 500).json({ error: { code: err.code } }));
-  const saved = { u: process.env.SUPABASE_URL, k: process.env.SUPABASE_ANON_KEY };
-  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_ANON_KEY;
-  try {
-    const res = await call(app, "GET", "/x", "anything");
-    assert.equal(res.status, 500);
-    assert.equal(res.body.error.code, "AUTH_NOT_CONFIGURED");
-  } finally {
-    if (saved.u) process.env.SUPABASE_URL = saved.u;
-    if (saved.k) process.env.SUPABASE_ANON_KEY = saved.k;
+  app.use(createXeroRouter(dependencies));
+  app.use(createQuickBooksRouter(dependencies));
+  app.use((error, req, res, next) => res.status(error.status || 500).json({
+    error: { code: error.code, message: error.message },
+  }));
+
+  for (const provider of ["xero", "quickbooks"]) {
+    assert.equal((await call(app, "GET", `/${provider}/connect`)).status, 401);
+    assert.equal((await call(app, "GET", `/${provider}/connect`, "user-token")).status, 403);
+
+    const start = await call(
+      app,
+      "GET",
+      `/${provider}/connect`,
+      "admin-token",
+      { accept: "application/json" },
+    );
+    assert.equal(start.status, 200);
+    assert.equal(start.body.data.authorizationUrl, "https://login.example/authorize");
+
+    assert.equal((await call(app, "GET", `/${provider}/callback`)).status, 201);
+    assert.equal((await call(app, "GET", `/${provider}/connections`, "user-token")).status, 403);
+    assert.equal((await call(app, "GET", `/${provider}/connections`, "admin-token")).status, 200);
+    assert.equal((await call(app, "DELETE", `/${provider}/connections/id`, "user-token")).status, 403);
+    assert.equal((await call(app, "DELETE", `/${provider}/connections/id`, "admin-token")).status, 204);
   }
+
+  assert.deepEqual(authorizationMetadata, [
+    { actorUserId: "admin-1" },
+    { actorUserId: "admin-1" },
+  ]);
 });
 
-// ---------- the real app is wired up ----------
+test("missing Supabase configuration fails closed when access control is enabled", async () => {
+  const access = createAccessControl({ env: AUTH_ON, getRole: async () => "admin" });
+  const error = await runMiddleware(
+    access.authenticate,
+    requestWithAuthorization("Bearer any-token"),
+  );
 
-test("the real app has the guard wired in (ON)", async () => {
-  const prev = process.env.AUTH_REQUIRED;
-  process.env.AUTH_REQUIRED = "true";
-  try {
-    const app = require("../src/app");
-    const res = await call(app, "GET", `/api/v1/accounts?connectionId=${CONN}`);
-    assert.equal(res.status, 401);
-    assert.equal((await call(app, "DELETE", "/auth/xero/connections/abc")).status, 401);
-    assert.equal((await call(app, "GET", "/auth/xero/callback")).status, 200);
-  } finally {
-    if (prev === undefined) delete process.env.AUTH_REQUIRED; else process.env.AUTH_REQUIRED = prev;
-  }
-});
-
-test("the real app is unchanged when auth is OFF", async () => {
-  delete process.env.AUTH_REQUIRED;
-  const app = require("../src/app");
-  const res = await call(app, "GET", `/api/v1/accounts?connectionId=${CONN}`);
-  assert.equal(res.status, 200);
+  assert.equal(error.status, 500);
+  assert.equal(error.code, "AUTH_CONFIGURATION_ERROR");
 });

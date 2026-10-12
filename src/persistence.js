@@ -107,9 +107,10 @@ async function getUserRole(userId) {
 
 async function setUserRole(userId, role) {
   const result = await pool.query(
-    `INSERT INTO user_profiles (user_id, role)
-     VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role
+    `INSERT INTO user_profiles (user_id, role, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE
+       SET role = EXCLUDED.role, updated_at = now()
      RETURNING *`,
     [userId, role]
   );

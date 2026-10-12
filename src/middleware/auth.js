@@ -1,104 +1,180 @@
-// Access control for the API. ALL of the "who is calling?" logic lives here.
-//
-// Switch: AUTH_REQUIRED=true turns it on. It is OFF by default, so merging this
-// changes nothing until the portal is sending tokens.
-//
-// When ON, callers must send  Authorization: Bearer <Supabase access token>.
-// The token is checked with Supabase (auth.getUser), then the user's role is
-// read from user_profiles. Roles:
-//   - any role              can read (GET accounts, trial balance, connections list)
-//   - ADMIN_ROLE ("admin")  can also sync and delete connections
-//
-// To change how tokens are checked (different login system, API key, ...),
-// replace verifyToken() below. Nothing else needs to change.
-
+const { createClient } = require("@supabase/supabase-js");
 const persistence = require("../persistence");
 
+const rolePermissions = Object.freeze({
+  admin: Object.freeze([
+    "accounting:read",
+    "accounting:sync",
+    "connections:read",
+    "connections:manage",
+  ]),
+  user: Object.freeze(["accounting:read"]),
+});
+
 function httpError(status, code, message) {
-  const err = new Error(message);
-  err.status = status;
-  err.code = code;
-  return err;
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
 }
 
 function isAuthRequired(env = process.env) {
   return String(env.AUTH_REQUIRED).toLowerCase() === "true";
 }
 
-// ---- how a token is checked (swap this out if the login system changes) ----
-
-let supabaseClient;
-function getSupabase(env = process.env) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-    throw httpError(500, "AUTH_NOT_CONFIGURED", "AUTH_REQUIRED is on but SUPABASE_URL / SUPABASE_ANON_KEY are not set.");
-  }
-  if (!supabaseClient) {
-    const { createClient } = require("@supabase/supabase-js");
-    supabaseClient = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    });
-  }
-  return supabaseClient;
+function readBearerToken(authorization) {
+  if (typeof authorization !== "string") return null;
+  const match = authorization.match(/^Bearer\s+(\S+)$/i);
+  return match?.[1] || null;
 }
 
-// Returns { id, email } for a valid token, or throws a 401 / 503.
-async function verifyToken(token) {
-  const { data, error } = await getSupabase().auth.getUser(token);
-  if (error && error.name === "AuthRetryableFetchError") {
-    throw httpError(503, "AUTH_UNAVAILABLE", "Could not reach the login service. Try again.");
+function createSupabaseClient(env = process.env) {
+  const url = env.SUPABASE_URL;
+  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw httpError(
+      500,
+      "AUTH_CONFIGURATION_ERROR",
+      "Supabase authentication is not configured.",
+    );
   }
-  if (error || !data || !data.user) {
-    throw httpError(401, "INVALID_TOKEN", "Invalid or expired token.");
-  }
-  return { id: data.user.id, email: data.user.email };
+
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
 }
 
-// ---- middleware ----
+function getPersistedRole(userId) {
+  if (typeof persistence.getUserRole !== "function") {
+    throw new Error("Role persistence is unavailable.");
+  }
+  return persistence.getUserRole(userId);
+}
 
-function createAuth({ verify = verifyToken, getRole = persistence.getUserRole, env = process.env } = {}) {
-  const adminRole = () => env.ADMIN_ROLE || "admin";
+function createAccessControl({
+  env = process.env,
+  getRole = getPersistedRole,
+  supabaseClient = null,
+  clientFactory = () => createSupabaseClient(env),
+} = {}) {
+  if (typeof getRole !== "function") {
+    throw new TypeError("Access control requires getRole(userId).");
+  }
+
+  let client = supabaseClient;
+  const getClient = () => {
+    client ||= clientFactory();
+    return client;
+  };
+
+  async function verifyAccessToken(token) {
+    let authClient;
+    try {
+      authClient = getClient();
+    } catch (error) {
+      if (error.code === "AUTH_CONFIGURATION_ERROR") throw error;
+      throw httpError(
+        503,
+        "AUTHENTICATION_SERVICE_UNAVAILABLE",
+        "The authentication service is unavailable.",
+      );
+    }
+
+    let result;
+    try {
+      result = await authClient.auth.getUser(token);
+    } catch {
+      throw httpError(
+        503,
+        "AUTHENTICATION_SERVICE_UNAVAILABLE",
+        "The authentication service is unavailable.",
+      );
+    }
+
+    if (result.error?.name === "AuthRetryableFetchError") {
+      throw httpError(
+        503,
+        "AUTHENTICATION_SERVICE_UNAVAILABLE",
+        "The authentication service is unavailable.",
+      );
+    }
+    if (result.error || !result.data?.user?.id) {
+      throw httpError(401, "INVALID_ACCESS_TOKEN", "The access token is invalid or expired.");
+    }
+    return result.data.user;
+  }
+
+  async function loadUserRole(userId) {
+    try {
+      return await getRole(userId);
+    } catch {
+      throw httpError(
+        503,
+        "AUTHORIZATION_SERVICE_UNAVAILABLE",
+        "The user access profile could not be loaded.",
+      );
+    }
+  }
 
   async function authenticate(req, res, next) {
-    try {
-      if (!isAuthRequired(env)) return next();
-
-      const match = /^Bearer (.+)$/i.exec(req.get("authorization") || "");
-      if (!match) throw httpError(401, "UNAUTHENTICATED", "Missing bearer token.");
-
-      const user = await verify(match[1].trim());
-      const role = await getRole(user.id);
-      if (!role) throw httpError(403, "NO_ROLE", "This user has no role assigned.");
-
-      req.user = { ...user, role };
-      next();
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  function requireAdmin(req, res, next) {
     if (!isAuthRequired(env)) return next();
-    if (!req.user || req.user.role !== adminRole()) {
-      return next(httpError(403, "FORBIDDEN", "Admin role required."));
+
+    const token = readBearerToken(req.get("authorization"));
+    if (!token) {
+      return next(httpError(
+        401,
+        "AUTHENTICATION_REQUIRED",
+        "A Bearer access token is required.",
+      ));
     }
-    next();
+
+    try {
+      const user = await verifyAccessToken(token);
+      const role = await loadUserRole(user.id);
+      req.user = { id: user.id, email: user.email || null, role };
+      return next();
+    } catch (error) {
+      return next(error);
+    }
   }
 
-  // Guards the OAuth connection-management routes without editing the OAuth
-  // routers: GET .../connections needs a login, DELETE .../connections/:id needs
-  // an admin. connect and callback stay open on purpose (the browser is
-  // redirected through them, so it cannot send a bearer header).
-  const CONNECTIONS_PATH = /^\/[^/]+\/connections(\/|$)/;
-  function guardConnectionRoutes(req, res, next) {
-    if (!CONNECTIONS_PATH.test(req.path)) return next();
-    authenticate(req, res, (err) => {
-      if (err) return next(err);
-      if (req.method === "DELETE") return requireAdmin(req, res, next);
-      next();
-    });
+  function requirePermission(permission) {
+    return (req, res, next) => {
+      if (!isAuthRequired(env)) return next();
+      if (!req.user) {
+        return next(httpError(401, "AUTHENTICATION_REQUIRED", "Authentication is required."));
+      }
+      if (req.user.role === null) {
+        return next(httpError(
+          403,
+          "USER_PROFILE_REQUIRED",
+          "This user does not have an access-control profile.",
+        ));
+      }
+      if (!rolePermissions[req.user.role]?.includes(permission)) {
+        return next(httpError(
+          403,
+          "INSUFFICIENT_PERMISSION",
+          "You do not have permission to perform this action.",
+        ));
+      }
+      return next();
+    };
   }
 
-  return { authenticate, requireAdmin, guardConnectionRoutes };
+  return { authenticate, requirePermission };
 }
 
-module.exports = { ...createAuth(), createAuth, isAuthRequired };
+const accessControl = createAccessControl();
+
+module.exports = {
+  ...accessControl,
+  createAccessControl,
+  isAuthRequired,
+  readBearerToken,
+  rolePermissions,
+};

@@ -63,22 +63,30 @@ Every failure uses the same shape:
 
 ## Access control
 
-Off by default. Set `AUTH_REQUIRED=true` (plus `SUPABASE_URL` and `SUPABASE_ANON_KEY`)
-and every call must send `Authorization: Bearer <Supabase access token>`.
-The user's role is read from `user_profiles`.
+Off by default. Set `AUTH_REQUIRED=true` (plus `SUPABASE_URL` and either
+`SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`) and protected calls must send
+`Authorization: Bearer <Supabase access token>`. The user's role is read from
+`user_profiles`; create that table with
+`db/migrations/004_create_user_profiles.sql`.
 
 | Who | Can do |
 |---|---|
-| any role | `GET /accounts`, `GET /trial-balance`, `GET /auth/<provider>/connections` |
-| `ADMIN_ROLE` (default `admin`) | the above, plus `POST /sync` and `DELETE /auth/<provider>/connections/:id` |
-| nobody (open on purpose) | `/auth/<provider>/connect` and `/callback`, because the browser is redirected through them |
+| `user` | `GET /accounts`, `GET /trial-balance` |
+| `admin` | the above, plus sync and all connection-management routes |
+| OAuth callback | Open to the provider redirect, but protected by single-use OAuth state |
+
+An authenticated admin starts OAuth with `GET /auth/<provider>/connect`. A
+normal browser request receives a redirect. A portal request with
+`Accept: application/json` receives `{ "data": { "authorizationUrl": "..." } }`
+so the portal can attach its Bearer token and then navigate to the returned URL.
 
 | Status | Code | When |
 |---|---|---|
-| 401 | `UNAUTHENTICATED` / `INVALID_TOKEN` | no token, or a bad / expired one |
-| 403 | `NO_ROLE` / `FORBIDDEN` | user has no role, or is not an admin |
-| 503 | `AUTH_UNAVAILABLE` | the login service could not be reached |
-| 500 | `AUTH_NOT_CONFIGURED` | auth is on but the Supabase settings are missing |
+| 401 | `AUTHENTICATION_REQUIRED` / `INVALID_ACCESS_TOKEN` | no token, or a bad / expired one |
+| 403 | `USER_PROFILE_REQUIRED` / `INSUFFICIENT_PERMISSION` | user has no role, or lacks the required permission |
+| 503 | `AUTHENTICATION_SERVICE_UNAVAILABLE` | the login service could not be reached |
+| 503 | `AUTHORIZATION_SERVICE_UNAVAILABLE` | the role database could not be reached |
+| 500 | `AUTH_CONFIGURATION_ERROR` | auth is on but the Supabase settings are missing |
 
 All of the token checking is in `src/middleware/auth.js`. If the login system
 changes, only `verifyToken()` there needs replacing.
