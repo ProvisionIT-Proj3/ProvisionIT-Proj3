@@ -8,8 +8,8 @@ const { toUtcTimestamp, toMoney } = require("../canonical/utils");
 // dataService.getAccounts. Every column name here was read from the SQL in
 // src/persistence.js.
 const FIELD_MAPS = {
-  // Accounts are built by Chris's buildXeroAccounts() and stored in the
-  // accounts table. Column names already match canonical once camelCased
+  // Accounts are built by each connector's mapper (buildXeroAccounts(),
+  // buildQuickbooksAccounts()) and stored in the accounts table. Column names already match canonical once camelCased
   // (dr_cr -> drCr, is_header -> isHeader, tax_code -> taxCode), so only the
   // vendor id needs renaming.
   account: {
@@ -71,4 +71,34 @@ function toCanonicalList(entity, rows, extra = {}) {
   });
 }
 
-module.exports = { toCanonical, toCanonicalList, FIELD_MAPS };
+/**
+ * Check mapped rows before they are written. The accounts table rejects a
+ * missing required field or a repeated id, and either would roll back the
+ * whole sync with a bare database error; this names the offending rows
+ * instead, before anything is deleted or inserted.
+ */
+function assertStorable(entity, rows) {
+  const problems = [];
+  const seenIds = new Set();
+
+  rows.forEach((row, i) => {
+    const label = `row ${i + 1} (${row.id ?? "no id"})`;
+    for (const error of validate(entity, row).errors) problems.push(`${label}: ${error}`);
+
+    if (row.id !== undefined && row.id !== null) {
+      if (seenIds.has(row.id)) problems.push(`${label}: duplicate id`);
+      seenIds.add(row.id);
+    }
+  });
+
+  if (problems.length > 0) {
+    const shown = problems.slice(0, 5).join("; ");
+    const more = problems.length > 5 ? ` (+${problems.length - 5} more)` : "";
+    const err = new Error(`Mapped ${entity} data cannot be stored: ${shown}${more}`);
+    err.status = 502;
+    err.code = "MAPPING_INVALID";
+    throw err;
+  }
+}
+
+module.exports = { toCanonical, toCanonicalList, assertStorable, FIELD_MAPS };

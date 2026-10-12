@@ -1,0 +1,354 @@
+{
+  "QueryResponse": {
+    "Account": [
+      {
+        "Name": "Business Cheque",
+        "SubAccount": false,
+        "FullyQualifiedName": "Business Cheque",
+        "Active": true,
+        "Classification": "Asset",
+        "AccountType": "Bank",
+        "AccountSubType": "Checking",
+        "AcctNum": "1-1110",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "11"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "35",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Accounts Receivable",
+        "SubAccount": false,
+        "FullyQualifiedName": "Accounts Receivable",
+        "Active": true,
+        "Classification": "Asset",
+        "AccountType": "Accounts Receivable",
+        "AccountSubType": "AccountsReceivable",
+        "AcctNum": "1-1200",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "11"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "36",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Office Equipment",
+        "SubAccount": false,
+        "FullyQualifiedName": "Office Equipment",
+        "Active": true,
+        "Classification": "Asset",
+        "AccountType": "Fixed Asset",
+        "AccountSubType": "MachineryAndEquipment",
+        "AcctNum": "1-2100",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "7"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "37",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Business Credit Card",
+        "SubAccount": false,
+        "FullyQualifiedName": "Business Credit Card",
+        "Active": true,
+        "Classification": "Liability",
+        "AccountType": "Credit Card",
+        "AccountSubType": "CreditCard",
+        "AcctNum": "2-1100",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "11"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "38",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Accounts Payable",
+        "SubAccount": false,
+        "FullyQualifiedName": "Accounts Payable",
+        "Active": true,
+        "Classification": "Liability",
+        "AccountType": "Accounts Payable",
+        "AccountSubType": "AccountsPayable",
+        "AcctNum": "2-1200",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "11"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "40",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "GST Liability",
+        "SubAccount": false,
+        "FullyQualifiedName": "GST Liability",
+        "Active": true,
+        "Classification": "Liability",
+        "AccountType": "Other Current Liability",
+        "AccountSubType": "GlobalTaxPayable",
+        "AcctNum": "2-1300",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "41",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Owner's Equity",
+        "SubAccount": false,
+        "FullyQualifiedName": "Owner's Equity",
+        "Active": true,
+        "Classification": "Equity",
+        "AccountType": "Equity",
+        "AccountSubType": "OwnersEquity",
+        "AcctNum": "3-1000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "50",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Sales",
+        "SubAccount": false,
+        "FullyQualifiedName": "Sales",
+        "Active": true,
+        "Classification": "Revenue",
+        "AccountType": "Income",
+        "AccountSubType": "SalesOfProductIncome",
+        "AcctNum": "4-1000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "3"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "60",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Export Sales",
+        "SubAccount": false,
+        "FullyQualifiedName": "Export Sales",
+        "Active": true,
+        "Classification": "Revenue",
+        "AccountType": "Income",
+        "AccountSubType": "SalesOfProductIncome",
+        "AcctNum": "4-1100",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "5"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "61",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Cost of Sales",
+        "SubAccount": false,
+        "FullyQualifiedName": "Cost of Sales",
+        "Active": true,
+        "Classification": "Expense",
+        "AccountType": "Cost of Goods Sold",
+        "AccountSubType": "SuppliesMaterialsCogs",
+        "AcctNum": "5-1000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "8"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "70",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Bank Fees",
+        "SubAccount": false,
+        "FullyQualifiedName": "Bank Fees",
+        "Active": true,
+        "Classification": "Expense",
+        "AccountType": "Expense",
+        "AccountSubType": "BankCharges",
+        "AcctNum": "6-1000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "10"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "71",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Rent",
+        "SubAccount": false,
+        "FullyQualifiedName": "Rent",
+        "Active": true,
+        "Classification": "Expense",
+        "AccountType": "Expense",
+        "AccountSubType": "RentOrLeaseOfBuildings",
+        "AcctNum": "6-2000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "9"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "72",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      },
+      {
+        "Name": "Travel",
+        "SubAccount": false,
+        "FullyQualifiedName": "Travel",
+        "Active": true,
+        "Classification": "Expense",
+        "AccountType": "Expense",
+        "AccountSubType": "Travel",
+        "AcctNum": "6-3000",
+        "CurrentBalance": 0,
+        "CurrentBalanceWithSubAccounts": 0,
+        "CurrencyRef": {
+          "value": "AUD",
+          "name": "Australian Dollar"
+        },
+        "TaxCodeRef": {
+          "value": "8"
+        },
+        "domain": "QBO",
+        "sparse": false,
+        "Id": "73",
+        "SyncToken": "0",
+        "MetaData": {
+          "CreateTime": "2025-07-01T09:00:00+10:00",
+          "LastUpdatedTime": "2026-06-30T17:00:00+10:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 13
+  },
+  "time": "2026-06-30T17:05:00.000+10:00"
+}

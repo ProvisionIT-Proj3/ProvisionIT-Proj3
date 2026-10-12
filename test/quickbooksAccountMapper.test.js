@@ -5,7 +5,17 @@ const {
   buildQuickbooksAccounts,
   mapQuickbooksAccountDimension,
   mapQuickbooksTaxCode,
+  parseTrialBalanceReport,
+  getQuickbooksReportDate,
 } = require("../src/mappers/quickbooks/accountMapper");
+
+// TaxCode ids differ per QBO company; the mapper resolves them by name.
+const RAW_TAX_CODES = [
+  { Id: "2", Name: "GST" },
+  { Id: "3", Name: "Out of Scope" },
+  { Id: "9", Name: "Input tax" },
+];
+const TAX_CODE_NAMES = new Map(RAW_TAX_CODES.map((t) => [t.Id, t.Name]));
 
 const RAW_ACCOUNTS = [
   {
@@ -68,7 +78,7 @@ const RAW_TRIAL_BALANCE = {
 };
 
 test("buildQuickbooksAccounts returns canonical account rows, not raw QBO fields", () => {
-  const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, RAW_TRIAL_BALANCE);
+  const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, RAW_TRIAL_BALANCE, RAW_TAX_CODES);
 
   // 2 sections x (1 header + 1 detail) = 4 rows
   assert.equal(accounts.length, 4);
@@ -118,9 +128,110 @@ test("mapQuickbooksAccountDimension substitutes Id for a blank AcctNum", () => {
   assert.equal(withAcctNum.code, "1000");
 });
 
-test("mapQuickbooksTaxCode passes unmapped TaxCodeRef values through as UNMAPPED:<value>", () => {
-  assert.equal(mapQuickbooksTaxCode({ value: "2" }), "GST");
-  assert.equal(mapQuickbooksTaxCode({ value: "3" }), "N-T");
-  assert.equal(mapQuickbooksTaxCode({ value: "17" }), "UNMAPPED:17");
-  assert.equal(mapQuickbooksTaxCode(undefined), undefined);
+test("mapQuickbooksTaxCode resolves TaxCodeRef by tax code name, not by id", () => {
+  assert.equal(mapQuickbooksTaxCode({ value: "2" }, TAX_CODE_NAMES), "GST");
+  assert.equal(mapQuickbooksTaxCode({ value: "3" }, TAX_CODE_NAMES), "N-T");
+  // Known id, name with no client code: the name is passed through.
+  assert.equal(mapQuickbooksTaxCode({ value: "9" }, TAX_CODE_NAMES), "UNMAPPED:Input tax");
+  // Id not in this company's TaxCode list.
+  assert.equal(mapQuickbooksTaxCode({ value: "17" }, TAX_CODE_NAMES), "UNMAPPED:17");
+  // Another company where id 2 is something else must not come out as GST.
+  assert.equal(mapQuickbooksTaxCode({ value: "2" }, new Map([["2", "GST free"]])), "FRE");
+  assert.equal(mapQuickbooksTaxCode(undefined, TAX_CODE_NAMES), undefined);
+});
+
+// QBO's real TrialBalance response: flat Data rows, then a title-less GrandTotal section.
+const FLAT_TRIAL_BALANCE = {
+  Rows: {
+    Row: [
+      { type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "500.00" }, { value: "" }] },
+      { type: "Data", ColData: [{ value: "Sales", id: "79" }, { value: "" }, { value: "500.00" }] },
+      {
+        type: "Section",
+        group: "GrandTotal",
+        Summary: { ColData: [{ value: "TOTAL" }, { value: "500.00" }, { value: "500.00" }] },
+      },
+    ],
+  },
+};
+
+test("parseTrialBalanceReport handles flat account rows and ignores the GrandTotal section", () => {
+  const sections = parseTrialBalanceReport(FLAT_TRIAL_BALANCE);
+
+  assert.equal(sections.length, 1);
+  assert.equal(sections[0].title, "Accounts");
+  assert.deepEqual(
+    sections[0].rows.map((r) => [r.accountId, r.debit, r.credit]),
+    [
+      ["35", 500, 0],
+      ["79", 0, 500],
+    ]
+  );
+});
+
+test("buildQuickbooksAccounts maps a flat trial balance to a header plus detail rows", () => {
+  const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, FLAT_TRIAL_BALANCE, RAW_TAX_CODES);
+
+  assert.equal(accounts.length, 3);
+  assert.equal(accounts[0].isHeader, true);
+  // The flat "Accounts" header holds both sides, which net to zero: no side, value 0.
+  assert.equal(accounts[0].value, 0);
+  assert.equal(accounts[0].drCr, undefined);
+  assert.equal(accounts[1].name, "Checking");
+  assert.equal(accounts[1].drCr, "Dr");
+  assert.equal(accounts[2].name, "Sales");
+  assert.equal(accounts[2].drCr, "Cr");
+  assert.equal(accounts.some((a) => a.id === "header:undefined"), false);
+});
+
+test("negative amounts flip the side instead of reporting a zero balance", () => {
+  const report = {
+    Rows: {
+      Row: [
+        { type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "-50.00" }, { value: "" }] },
+        { type: "Data", ColData: [{ value: "Sales", id: "79" }, { value: "" }, { value: "(75.00)" }] },
+      ],
+    },
+  };
+  const [, checking, sales] = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+
+  assert.equal(checking.drCr, "Cr");
+  assert.equal(checking.value, 50);
+  assert.equal(sales.drCr, "Dr");
+  assert.equal(sales.value, 75);
+});
+
+test("amounts with thousands separators parse; garbage amounts throw rather than become 0", () => {
+  const withComma = {
+    Rows: { Row: [{ type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "1,234.50" }, { value: "" }] }] },
+  };
+  assert.equal(parseTrialBalanceReport(withComma)[0].rows[0].debit, 1234.5);
+
+  const garbage = {
+    Rows: { Row: [{ type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "n/a" }, { value: "" }] }] },
+  };
+  assert.throws(() => parseTrialBalanceReport(garbage), /Unparseable QuickBooks report amount/);
+});
+
+test("repeated ids get a #n suffix so one sync can't hit the unique (connection, id) constraint", () => {
+  const report = {
+    Rows: {
+      Row: [
+        { type: "Section", Header: { ColData: [{ value: "Revenue" }] }, Rows: { Row: [
+          { type: "Data", ColData: [{ value: "Mystery" }, { value: "" }, { value: "10.00" }] },
+          { type: "Data", ColData: [{ value: "Mystery" }, { value: "" }, { value: "20.00" }] },
+        ] } },
+        { type: "Section", Header: { ColData: [{ value: "Revenue" }] }, Rows: { Row: [] } },
+      ],
+    },
+  };
+  const ids = buildQuickbooksAccounts([], report).map((a) => a.id);
+
+  assert.deepEqual(ids, ["header:Revenue", "unmatched:Mystery", "unmatched:Mystery#2", "header:Revenue#2"]);
+});
+
+test("getQuickbooksReportDate reads Header.EndPeriod", () => {
+  assert.equal(getQuickbooksReportDate({ Header: { EndPeriod: "2026-06-30" } }), "2026-06-30");
+  assert.equal(getQuickbooksReportDate({ Header: {} }), null);
+  assert.equal(getQuickbooksReportDate(undefined), null);
 });
