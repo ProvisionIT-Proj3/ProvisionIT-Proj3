@@ -167,6 +167,64 @@ test("an authenticated user without a profile receives USER_PROFILE_REQUIRED", a
   assert.equal(error.code, "USER_PROFILE_REQUIRED");
 });
 
+test("users can access only assigned connections while admins bypass tenant checks", async () => {
+  const checkedConnections = [];
+  const ownConnections = [{ connection_id: "connection-1", company_name: "Own Company" }];
+  const access = createAccessControl({
+    ...createDependencies(),
+    hasConnectionAccess: async (userId, connectionId) => {
+      checkedConnections.push({ userId, connectionId });
+      return connectionId === "connection-1";
+    },
+    listUserConnections: async (userId) => {
+      assert.equal(userId, "user-1");
+      return ownConnections;
+    },
+  });
+
+  const assigned = { connectionId: "connection-1", user: { id: "user-1", role: "user" } };
+  assert.equal(await runMiddleware(access.requireConnectionAccess, assigned), undefined);
+
+  const otherTenant = { connectionId: "connection-2", user: { id: "user-1", role: "user" } };
+  const denied = await runMiddleware(access.requireConnectionAccess, otherTenant);
+  assert.equal(denied.status, 404);
+  assert.equal(denied.code, "CONNECTION_NOT_FOUND");
+
+  const admin = { connectionId: "connection-2", user: { id: "admin-1", role: "admin" } };
+  assert.equal(await runMiddleware(access.requireConnectionAccess, admin), undefined);
+  assert.deepEqual(checkedConnections, [
+    { userId: "user-1", connectionId: "connection-1" },
+    { userId: "user-1", connectionId: "connection-2" },
+  ]);
+
+  const listRequest = { user: { id: "user-1", role: "user" } };
+  assert.equal(await runMiddleware(access.loadAccessibleConnections, listRequest), undefined);
+  assert.equal(listRequest.accessibleConnections, ownConnections);
+});
+
+test("connection access persistence failures return a safe 503", async () => {
+  const access = createAccessControl({
+    ...createDependencies(),
+    hasConnectionAccess: async () => {
+      throw new Error("database details");
+    },
+    listUserConnections: async () => {
+      throw new Error("database details");
+    },
+  });
+  const req = { connectionId: "connection-1", user: { id: "user-1", role: "user" } };
+
+  const checkError = await runMiddleware(access.requireConnectionAccess, req);
+  assert.equal(checkError.status, 503);
+  assert.equal(checkError.code, "CONNECTION_ACCESS_SERVICE_UNAVAILABLE");
+  assert.doesNotMatch(checkError.message, /database/i);
+
+  const listError = await runMiddleware(access.loadAccessibleConnections, req);
+  assert.equal(listError.status, 503);
+  assert.equal(listError.code, "CONNECTION_ACCESS_SERVICE_UNAVAILABLE");
+  assert.doesNotMatch(listError.message, /database/i);
+});
+
 test("OAuth management requires admin access while callbacks remain available", async () => {
   const users = {
     "admin-token": { id: "admin-1", email: "admin@example.com" },

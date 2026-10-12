@@ -55,14 +55,33 @@ function getPersistedRole(userId) {
   return persistence.getUserRole(userId);
 }
 
+function checkPersistedConnectionAccess(userId, connectionId) {
+  if (typeof persistence.hasUserConnectionAccess !== "function") {
+    throw new Error("Connection access persistence is unavailable.");
+  }
+  return persistence.hasUserConnectionAccess(userId, connectionId);
+}
+
+function listPersistedUserConnections(userId) {
+  if (typeof persistence.listConnectionsForUser !== "function") {
+    throw new Error("Connection access persistence is unavailable.");
+  }
+  return persistence.listConnectionsForUser(userId);
+}
+
 function createAccessControl({
   env = process.env,
   getRole = getPersistedRole,
+  hasConnectionAccess = checkPersistedConnectionAccess,
+  listUserConnections = listPersistedUserConnections,
   supabaseClient = null,
   clientFactory = () => createSupabaseClient(env),
 } = {}) {
   if (typeof getRole !== "function") {
     throw new TypeError("Access control requires getRole(userId).");
+  }
+  if (typeof hasConnectionAccess !== "function" || typeof listUserConnections !== "function") {
+    throw new TypeError("Access control requires connection access persistence methods.");
   }
 
   let client = supabaseClient;
@@ -166,7 +185,54 @@ function createAccessControl({
     };
   }
 
-  return { authenticate, requirePermission };
+  async function requireConnectionAccess(req, res, next) {
+    if (!isAuthRequired(env) || req.user?.role === "admin") return next();
+    if (!req.user) {
+      return next(httpError(401, "AUTHENTICATION_REQUIRED", "Authentication is required."));
+    }
+
+    try {
+      const allowed = await hasConnectionAccess(req.user.id, req.connectionId);
+      if (allowed !== true) {
+        // A 404 prevents callers from using this endpoint to discover other tenants.
+        return next(httpError(404, "CONNECTION_NOT_FOUND", "Accounting connection not found."));
+      }
+      return next();
+    } catch {
+      return next(httpError(
+        503,
+        "CONNECTION_ACCESS_SERVICE_UNAVAILABLE",
+        "Connection access could not be verified.",
+      ));
+    }
+  }
+
+  async function loadAccessibleConnections(req, res, next) {
+    if (!isAuthRequired(env) || req.user?.role === "admin") return next();
+    if (!req.user) {
+      return next(httpError(401, "AUTHENTICATION_REQUIRED", "Authentication is required."));
+    }
+
+    try {
+      const connections = await listUserConnections(req.user.id);
+      if (!Array.isArray(connections)) throw new TypeError("Expected a connection list.");
+      req.accessibleConnections = connections;
+      return next();
+    } catch {
+      return next(httpError(
+        503,
+        "CONNECTION_ACCESS_SERVICE_UNAVAILABLE",
+        "Connection access could not be loaded.",
+      ));
+    }
+  }
+
+  return {
+    authenticate,
+    loadAccessibleConnections,
+    requireConnectionAccess,
+    requirePermission,
+  };
 }
 
 const accessControl = createAccessControl();

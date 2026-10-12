@@ -71,7 +71,7 @@ Off by default. Set `AUTH_REQUIRED=true` (plus `SUPABASE_URL` and either
 
 | Who | Can do |
 |---|---|
-| `user` | `GET /accounts`, `GET /trial-balance` |
+| `user` | Read accounts and trial balance only for assigned connections; list assigned connections |
 | `admin` | the above, plus sync and all connection-management routes |
 | OAuth callback | Open to the provider redirect, but protected by single-use OAuth state |
 
@@ -79,6 +79,10 @@ An authenticated admin starts OAuth with `GET /auth/<provider>/connect`. A
 normal browser request receives a redirect. A portal request with
 `Accept: application/json` receives `{ "data": { "authorizationUrl": "..." } }`
 so the portal can attach its Bearer token and then navigate to the returned URL.
+
+User-to-company access is resolved through `persistence.hasUserConnectionAccess`
+and `persistence.listConnectionsForUser`. A denied connection lookup returns 404
+so users cannot discover another company's connection ID.
 
 | Status | Code | When |
 |---|---|---|
