@@ -14,7 +14,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
 
-// runs several queries as one unit, rolls back if any fail
+// A shared client prevents partial OAuth records when any persistence step fails.
 async function withTransaction(fn) {
   const client = await pool.connect();
   try {
@@ -150,9 +150,10 @@ async function getUserRole(userId) {
 
 async function setUserRole(userId, role) {
   const result = await pool.query(
-    `INSERT INTO user_profiles (user_id, role)
-     VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role
+    `INSERT INTO user_profiles (user_id, role, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE
+       SET role = EXCLUDED.role, updated_at = now()
      RETURNING *`,
     [userId, role]
   );
@@ -261,8 +262,60 @@ async function getActivityLog(connectionId, limit = 50) {
   return result.rows;
 }
 
+const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function hasUserConnectionAccess(userId, connectionId, client = pool) {
+  if (!accessUuidPattern.test(String(userId)) || !accessUuidPattern.test(String(connectionId))) {
+    return false;
+  }
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM user_connection_access
+       WHERE user_id = $1 AND connection_id = $2
+     ) AS allowed`,
+    [userId, connectionId]
+  );
+  return result.rows[0].allowed === true;
+}
+
+// Matching listConnections() keeps the route response independent of the caller's role.
+async function listConnectionsForUser(userId, client = pool) {
+  if (!accessUuidPattern.test(String(userId))) return [];
+  const result = await client.query(
+    `SELECT c.*
+     FROM connections c
+     JOIN user_connection_access a ON a.connection_id = c.connection_id
+     WHERE a.user_id = $1
+     ORDER BY c.date_connected DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+// Idempotent grants make retries safe after an uncertain network response.
+async function grantUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `INSERT INTO user_connection_access (user_id, connection_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, connection_id) DO UPDATE SET user_id = EXCLUDED.user_id
+     RETURNING *`,
+    [userId, connectionId]
+  );
+  return result.rows[0];
+}
+
+async function revokeUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `DELETE FROM user_connection_access WHERE user_id = $1 AND connection_id = $2`,
+    [userId, connectionId]
+  );
+  return { revoked: result.rowCount > 0 };
+}
+
 module.exports = {
   withTransaction,
+  hasUserConnectionAccess, listConnectionsForUser,
+  grantUserConnectionAccess, revokeUserConnectionAccess,
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   getUserRole, setUserRole,

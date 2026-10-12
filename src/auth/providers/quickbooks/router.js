@@ -5,15 +5,21 @@ function toQuickBooksResponse(connection) {
   return { ...shared, realmId: providerAccountId, companyName: accountName, environment: metadata?.environment };
 }
 
-function createQuickBooksRouter({ service, assertConfigured }) {
+function createQuickBooksRouter({ service, assertConfigured, authenticate, requirePermission }) {
   const router = express.Router();
+  const manageConnections = requirePermission("connections:manage");
+  const readConnections = requirePermission("connections:read");
 
-  router.get("/quickbooks/connect", (req, res, next) => {
+  router.get("/quickbooks/connect", authenticate, manageConnections, (req, res, next) => {
     try {
       assertConfigured();
-      res.redirect(302, service.getAuthorizationUrl());
+      const authorizationUrl = service.getAuthorizationUrl({ actorUserId: req.user?.id });
+      if ((req.get("accept") || "").includes("application/json")) {
+        return res.json({ data: { authorizationUrl } });
+      }
+      return res.redirect(302, authorizationUrl);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   });
 
@@ -29,7 +35,7 @@ function createQuickBooksRouter({ service, assertConfigured }) {
     }
   });
 
-  router.get("/quickbooks/connections", async (req, res, next) => {
+  router.get("/quickbooks/connections", authenticate, readConnections, async (req, res, next) => {
     try {
       const connections = await service.listConnections();
       res.json({ data: connections.map(toQuickBooksResponse) });
@@ -38,7 +44,7 @@ function createQuickBooksRouter({ service, assertConfigured }) {
     }
   });
 
-  router.delete("/quickbooks/connections/:connectionId", async (req, res, next) => {
+  router.delete("/quickbooks/connections/:connectionId", authenticate, manageConnections, async (req, res, next) => {
     try {
       assertConfigured();
       await service.disconnect(req.params.connectionId);
