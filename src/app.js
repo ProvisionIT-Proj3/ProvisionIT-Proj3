@@ -1,18 +1,16 @@
 const express = require("express");
 const apiRoutes = require("./routes/api");
 const { router: authRoutes } = require("./auth/xero");
-const { guardConnectionRoutes } = require("./middleware/auth");
 
 const app = express();
 app.use(express.json());
 
-// Mounted before /api/v1 so these routes (and guardConnectionRoutes' open
-// /connect and /callback) are matched first — otherwise apiRoutes' blanket
-// authenticate middleware would run first for anything under /api/v1/auth.
-app.use("/api/v1/auth", guardConnectionRoutes, authRoutes);
+// OAuth routes own their permission checks because callbacks must remain open
+// while connection-management operations require an authenticated admin.
+app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1", apiRoutes);
 // Xero's registered callback currently uses this non-versioned path.
-app.use("/auth", guardConnectionRoutes, authRoutes);
+app.use("/auth", authRoutes);
 
 // Standard error format for all failures (FR-12: handle & log failures)
 app.use((err, req, res, next) => {

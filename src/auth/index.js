@@ -12,7 +12,7 @@ const { getXeroConfig, assertXeroConfigured } = require("./providers/xero/config
 const XeroProvider = require("./providers/xero/provider");
 const createXeroRouter = require("./providers/xero/router");
 const { createAuditLogger } = require("../security/auditLogger");
-
+const { authenticate, requirePermission } = require("../middleware/auth");
 const persistence = require("../persistence");
 
 function createConnectionStore(provider) {
@@ -52,10 +52,14 @@ const router = express.Router();
 router.use(createXeroRouter({
   service: xeroOAuth,
   assertConfigured: () => assertXeroConfigured(xeroConfig),
+  authenticate,
+  requirePermission,
 }));
 router.use(createQuickBooksRouter({
   service: quickBooksOAuth,
   assertConfigured: () => assertQuickBooksConfigured(quickBooksConfig),
+  authenticate,
+  requirePermission,
 }));
 
 module.exports = { router, registry, xeroOAuth, quickBooksOAuth };

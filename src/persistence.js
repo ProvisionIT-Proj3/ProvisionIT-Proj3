@@ -14,20 +14,43 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
 
+// A shared client prevents partial OAuth records when any persistence step fails.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // ---------- CONNECTIONS ----------
 
-async function createConnection({ companyName, platform, externalAccountId }) {
-  const result = await pool.query(
-    `INSERT INTO connections (company_name, platform, status, external_account_id)
-     VALUES ($1, $2, 'active', $3)
+async function createConnection({
+  companyName,
+  platform,
+  externalConnectionId = null,
+  externalAccountId,
+  providerMetadata = {},
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO connections
+       (company_name, platform, status, external_connection_id, external_account_id, provider_metadata)
+     VALUES ($1, $2, 'active', $3, $4, $5)
      RETURNING *`,
-    [companyName, platform, externalAccountId]
+    [companyName, platform, externalConnectionId, externalAccountId, providerMetadata]
   );
   return result.rows[0];
 }
 
-async function getConnectionById(connectionId) {
-  const result = await pool.query(
+async function getConnectionById(connectionId, client = pool) {
+  const result = await client.query(
     `SELECT * FROM connections WHERE connection_id = $1`,
     [connectionId]
   );
@@ -48,45 +71,65 @@ async function deleteConnection(connectionId) {
 // Tokens live here, not on `connections`, because one Xero OAuth grant can cover
 // multiple organisations sharing the same rotating tokens (Yihan's multi-provider point).
 
-async function createCredential({ platform, accessToken, refreshToken, expiresAt }) {
-  const result = await pool.query(
-    `INSERT INTO oauth_credentials (platform, access_token, refresh_token, token_expires_at)
-     VALUES ($1, $2, $3, $4)
+async function createCredential({
+  platform,
+  accessToken = null,
+  refreshToken = null,
+  expiresAt = null,
+  status = 'active',
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO oauth_credentials
+       (platform, access_token, refresh_token, token_expires_at, status)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [platform, accessToken, refreshToken, expiresAt]
+    [platform, accessToken, refreshToken, expiresAt, status]
   );
   return result.rows[0];
 }
 
 // Refreshing updates ONE row here — every connection referencing this credential_id
 // automatically sees the new token, no per-connection update loop needed.
-async function updateCredentialTokens(credentialId, { accessToken, refreshToken, expiresAt }) {
-  const result = await pool.query(
+async function updateCredentialTokens(
+  credentialId,
+  { accessToken, refreshToken, expiresAt, status = 'active' },
+  client = pool
+) {
+  const result = await client.query(
     `UPDATE oauth_credentials
-     SET access_token = $1, refresh_token = $2, token_expires_at = $3
-     WHERE credential_id = $4
+     SET access_token = $1,
+         refresh_token = $2,
+         token_expires_at = $3,
+         status = $4,
+         updated_at = now()
+     WHERE credential_id = $5
      RETURNING *`,
-    [accessToken, refreshToken, expiresAt, credentialId]
+    [accessToken, refreshToken, expiresAt, status, credentialId]
   );
   return result.rows[0];
 }
 
-// Links a connection (one company/tenant) to a shared credential
-async function linkConnectionToCredential(connectionId, credentialId, externalAccountId) {
-  const result = await pool.query(
+// The provider account ID is saved when the connection is created. Linking a
+// credential must not be able to erase it during a later update.
+async function linkConnectionToCredential(connectionId, credentialId, client = pool) {
+  const result = await client.query(
     `UPDATE connections
-     SET credential_id = $1, external_account_id = $2
-     WHERE connection_id = $3
-     RETURNING connection_id, company_name, platform, status, external_account_id, credential_id`,
-    [credentialId, externalAccountId, connectionId]
+     SET credential_id = $1
+     WHERE connection_id = $2
+     RETURNING connection_id, company_name, platform, status,
+               external_connection_id, external_account_id, provider_metadata, credential_id`,
+    [credentialId, connectionId]
   );
   return result.rows[0];
 }
 
 // Gets a connection's current tokens by following its credential_id
-async function getTokensForConnection(connectionId) {
-  const result = await pool.query(
-    `SELECT oc.access_token, oc.refresh_token, oc.token_expires_at
+async function getTokensForConnection(connectionId, client = pool) {
+  const result = await client.query(
+    `SELECT oc.access_token,
+            oc.refresh_token,
+            oc.token_expires_at,
+            oc.status AS credential_status
      FROM connections c
      JOIN oauth_credentials oc ON oc.credential_id = c.credential_id
      WHERE c.connection_id = $1`,
@@ -107,9 +150,10 @@ async function getUserRole(userId) {
 
 async function setUserRole(userId, role) {
   const result = await pool.query(
-    `INSERT INTO user_profiles (user_id, role)
-     VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role
+    `INSERT INTO user_profiles (user_id, role, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE
+       SET role = EXCLUDED.role, updated_at = now()
      RETURNING *`,
     [userId, role]
   );
@@ -128,8 +172,8 @@ async function getAccountsByConnection(connectionId) {
   return result.rows;
 }
 
-// Stores the full account list for one connection, as produced by Chris's
-// buildXeroAccounts() (canonical shape, already in report order).
+// Stores the full account list for one connection, as produced by the
+// connector's mapper (canonical shape, already in report order).
 //
 // Accounts are a report snapshot, not independent records: accounts can be
 // renamed, archived or disappear between syncs. So this REPLACES the stored
@@ -252,7 +296,60 @@ async function writeAuditEvent({
   return result.rows[0];
 }
 
+const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function hasUserConnectionAccess(userId, connectionId, client = pool) {
+  if (!accessUuidPattern.test(String(userId)) || !accessUuidPattern.test(String(connectionId))) {
+    return false;
+  }
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM user_connection_access
+       WHERE user_id = $1 AND connection_id = $2
+     ) AS allowed`,
+    [userId, connectionId]
+  );
+  return result.rows[0].allowed === true;
+}
+
+// Matching listConnections() keeps the route response independent of the caller's role.
+async function listConnectionsForUser(userId, client = pool) {
+  if (!accessUuidPattern.test(String(userId))) return [];
+  const result = await client.query(
+    `SELECT c.*
+     FROM connections c
+     JOIN user_connection_access a ON a.connection_id = c.connection_id
+     WHERE a.user_id = $1
+     ORDER BY c.date_connected DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+// Idempotent grants make retries safe after an uncertain network response.
+async function grantUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `INSERT INTO user_connection_access (user_id, connection_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, connection_id) DO UPDATE SET user_id = EXCLUDED.user_id
+     RETURNING *`,
+    [userId, connectionId]
+  );
+  return result.rows[0];
+}
+
+async function revokeUserConnectionAccess(userId, connectionId, client = pool) {
+  const result = await client.query(
+    `DELETE FROM user_connection_access WHERE user_id = $1 AND connection_id = $2`,
+    [userId, connectionId]
+  );
+  return { revoked: result.rowCount > 0 };
+}
+
 module.exports = {
+  withTransaction,
+  hasUserConnectionAccess, listConnectionsForUser,
+  grantUserConnectionAccess, revokeUserConnectionAccess,
   createConnection, getConnectionById, listConnections, deleteConnection,
   createCredential, updateCredentialTokens, linkConnectionToCredential, getTokensForConnection,
   getUserRole, setUserRole,

@@ -1,4 +1,4 @@
-const { toMoney } = require('../../canonical/utils');
+const { parseAmount, buildAccountRows } = require('../shared/accountRows');
 
 /**
  * Xero Account mapper.
@@ -7,13 +7,19 @@ const { toMoney } = require('../../canonical/utils');
  *   1. GET /Accounts               — dimension data: Code, Name, Type,
  *      Class, TaxType. One row per account, no balances, no hierarchy.
  *   2. GET /Reports/TrialBalance    — balance data: Debit/Credit per
- *      account, grouped into named Sections (e.g. "Revenue", "Bank").
+ *      account, grouped into named Sections (e.g. "Revenue", "Assets").
  *      No Code or TaxType on this side, and no AccountID on Section rows
- *      (only on the individual account Rows within a Section).
+ *      (only on the individual account Rows within a Section). The grand
+ *      total comes last, as a title-less Section holding only a SummaryRow.
  */
 
-// Column order confirmed from Xero's Reports/TrialBalance Header row:
-// [Account, Debit, Credit, YTD Debit, YTD Credit]
+// Xero's Reports/TrialBalance Header row is
+// [Account, Debit, Credit, YTD Debit, YTD Credit]. Debit/Credit are the
+// movement for the report month; the YTD pair is the as-at balance (in Xero's
+// published example a bank account shows Debit 0.00 but YTD Debit 7639.04,
+// and only the YTD columns total to the balanced trial balance). So the
+// balance is read from the YTD pair, located by header text, falling back to
+// this fixed order when the Header row is missing.
 const COLUMN_INDEX = { ACCOUNT: 0, DEBIT: 1, CREDIT: 2, YTD_DEBIT: 3, YTD_CREDIT: 4 };
 
 // Standard double-entry convention, keyed on Xero's Class field.
@@ -42,7 +48,7 @@ const XERO_TAX_TYPE_TO_CLIENT_CODE = {
   CAPEXOUTPUT: 'GCA',
 };
 
-/** Translate a Xero TaxType to the client's tax code vocabulary; see TODO above. */
+/** Translate a Xero TaxType to the client's tax code vocabulary; */
 function mapXeroTaxCode(xeroTaxType) {
   if (!xeroTaxType) return undefined;
   return XERO_TAX_TYPE_TO_CLIENT_CODE[xeroTaxType] || `UNMAPPED:${xeroTaxType}`;
@@ -69,15 +75,31 @@ function mapXeroAccountDimension(xeroAccount) {
 
 /** Parse a report cell's numeric value; Xero reports use '' for empty cells. */
 function cellNumber(cell) {
-  if (!cell || cell.Value === '' || cell.Value === undefined) return 0;
-  const n = Number(cell.Value);
-  return Number.isNaN(n) ? 0 : n;
+  return parseAmount(cell?.Value, 'Xero');
 }
 
 /** Pull the Xero AccountID off a report cell's Attributes, if present. */
 function cellAccountId(cell) {
   const attr = (cell?.Attributes || []).find((a) => a.Id === 'account');
   return attr?.Value;
+}
+
+/**
+ * Find the balance columns from the report's Header row: the YTD pair when
+ * present, otherwise the plain Debit/Credit pair, otherwise the fixed order.
+ */
+function resolveBalanceColumns(report) {
+  const header = (report.Rows || []).find((r) => r.RowType === 'Header');
+  const titles = (header?.Cells || []).map((c) => String(c.Value ?? '').trim().toLowerCase());
+  const find = (title) => {
+    const i = titles.indexOf(title);
+    return i === -1 ? undefined : i;
+  };
+
+  const debit = find('ytd debit') ?? find('debit');
+  const credit = find('ytd credit') ?? find('credit');
+  if (debit !== undefined && credit !== undefined) return { debit, credit };
+  return { debit: COLUMN_INDEX.YTD_DEBIT, credit: COLUMN_INDEX.YTD_CREDIT };
 }
 
 /**
@@ -91,6 +113,7 @@ function parseTrialBalanceReport(rawReport) {
   const report = rawReport?.Reports?.[0];
   if (!report) return [];
 
+  const columns = resolveBalanceColumns(report);
   const sections = [];
 
   for (const row of report.Rows || []) {
@@ -100,27 +123,48 @@ function parseTrialBalanceReport(rawReport) {
     let summary = null;
 
     for (const sectionRow of row.Rows || []) {
+      const cells = sectionRow.Cells || [];
+
       if (sectionRow.RowType === 'Row') {
-        const cells = sectionRow.Cells || [];
         rows.push({
           accountId: cellAccountId(cells[COLUMN_INDEX.ACCOUNT]),
           name: cells[COLUMN_INDEX.ACCOUNT]?.Value,
-          debit: cellNumber(cells[COLUMN_INDEX.DEBIT]),
-          credit: cellNumber(cells[COLUMN_INDEX.CREDIT]),
+          debit: cellNumber(cells[columns.debit]),
+          credit: cellNumber(cells[columns.credit]),
         });
-      } else if (sectionRow.RowType === 'SummaryRow') {
-        const cells = sectionRow.Cells || [];
+      } else if (sectionRow.RowType === 'SummaryRow' && cells.length > Math.max(columns.debit, columns.credit)) {
+        // A SummaryRow too short to reach the balance columns is ignored; the header then sums its rows.
         summary = {
-          debit: cellNumber(cells[COLUMN_INDEX.DEBIT]),
-          credit: cellNumber(cells[COLUMN_INDEX.CREDIT]),
+          debit: cellNumber(cells[columns.debit]),
+          credit: cellNumber(cells[columns.credit]),
         };
       }
     }
+
+    // The grand total arrives as a title-less Section with only a SummaryRow; it isn't a section of accounts.
+    if (!row.Title && rows.length === 0) continue;
 
     sections.push({ title: row.Title, rows, summary });
   }
 
   return sections;
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * The report's as-of date ('YYYY-MM-DD'), from ReportDate (e.g. "30 June 2026").
+ * This is the organisation's date, not the server's. Null when the report
+ * doesn't state one in that form.
+ */
+function getXeroReportDate(rawReport) {
+  const text = rawReport?.Reports?.[0]?.ReportDate;
+  const match = typeof text === 'string' && text.trim().match(/^(\d{1,2}) ([A-Za-z]+) (\d{4})$/);
+  if (!match) return null;
+
+  const month = MONTHS.indexOf(match[2].slice(0, 3).toLowerCase()) + 1;
+  if (!month) return null;
+  return `${match[3]}-${String(month).padStart(2, '0')}-${match[1].padStart(2, '0')}`;
 }
 
 /**
@@ -139,63 +183,20 @@ function buildXeroAccounts(rawAccounts, rawTrialBalanceReport) {
     })
   );
 
-  const sections = parseTrialBalanceReport(rawTrialBalanceReport);
-  const result = [];
-  let sectionIndex = 0;
-
-  for (const section of sections) {
-    sectionIndex += 1;
-    const sectionDebit = section.summary?.debit ?? section.rows.reduce((sum, r) => sum + r.debit, 0);
-    const sectionCredit = section.summary?.credit ?? section.rows.reduce((sum, r) => sum + r.credit, 0);
-    const headerDrCr = sectionDebit >= sectionCredit ? 'Dr' : 'Cr';
-
-    const headerCode = `HDR-${sectionIndex}`;
-
-    result.push({
-      id: `header:${section.title}`,
-      sourceSystem: 'xero',
-      code: headerCode,
-      name: section.title,
-      type: section.title,
-      drCr: headerDrCr,
-      isHeader: true,
-      level: 1,
-      value: toMoney(Math.max(sectionDebit, sectionCredit)),
-      taxCode: undefined,
-      _vendorSpecific: { sectionRowCount: section.rows.length, synthesizedCode: true },
-    });
-
-    for (const row of section.rows) {
-      const dimension = dimensionById.get(row.accountId) || {};
-      const drCr = row.debit > 0 ? 'Dr' : row.credit > 0 ? 'Cr' : DR_CR_BY_CLASS[dimension.class] || undefined;
-      const value = toMoney(row.debit > 0 ? row.debit : row.credit);
-
-      result.push({
-        id: row.accountId || `unmatched:${row.name}`,
-        sourceSystem: 'xero',
-        code: dimension.code,
-        name: dimension.name || row.name,
-        type: dimension.type,
-        drCr,
-        isHeader: false,
-        level: 2,
-        value,
-        taxCode: dimension.taxCode,
-        _vendorSpecific: {
-          class: dimension.class,
-          matchedToAccountsList: Boolean(dimension.id),
-        },
-      });
-    }
-  }
-
-  return result;
+  return buildAccountRows({
+    sourceSystem: 'xero',
+    sections: parseTrialBalanceReport(rawTrialBalanceReport),
+    dimensionById,
+    fallbackDrCr: (dimension) => DR_CR_BY_CLASS[dimension.class],
+    vendorSpecific: (dimension) => ({ class: dimension.class }),
+  });
 }
 
 module.exports = {
   mapXeroAccountDimension,
   parseTrialBalanceReport,
   buildXeroAccounts,
+  getXeroReportDate,
   mapXeroTaxCode,
   DR_CR_BY_CLASS,
 };

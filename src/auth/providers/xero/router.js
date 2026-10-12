@@ -17,15 +17,21 @@ function toXeroResponse(connection) {
   };
 }
 
-function createXeroRouter({ service, assertConfigured }) {
+function createXeroRouter({ service, assertConfigured, authenticate, requirePermission }) {
   const router = express.Router();
+  const manageConnections = requirePermission("connections:manage");
+  const readConnections = requirePermission("connections:read");
 
-  router.get("/xero/connect", (req, res, next) => {
+  router.get("/xero/connect", authenticate, manageConnections, (req, res, next) => {
     try {
       assertConfigured();
-      res.redirect(302, service.getAuthorizationUrl());
+      const authorizationUrl = service.getAuthorizationUrl({ actorUserId: req.user?.id });
+      if ((req.get("accept") || "").includes("application/json")) {
+        return res.json({ data: { authorizationUrl } });
+      }
+      return res.redirect(302, authorizationUrl);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   });
 
@@ -41,7 +47,7 @@ function createXeroRouter({ service, assertConfigured }) {
     }
   });
 
-  router.get("/xero/connections", async (req, res, next) => {
+  router.get("/xero/connections", authenticate, readConnections, async (req, res, next) => {
     try {
       const connections = await service.listConnections();
       res.json({ data: connections.map(toXeroResponse) });
@@ -50,7 +56,7 @@ function createXeroRouter({ service, assertConfigured }) {
     }
   });
 
-  router.delete("/xero/connections/:connectionId", async (req, res, next) => {
+  router.delete("/xero/connections/:connectionId", authenticate, manageConnections, async (req, res, next) => {
     try {
       assertConfigured();
       await service.disconnect(req.params.connectionId);

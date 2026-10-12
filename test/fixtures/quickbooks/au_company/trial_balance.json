@@ -1,0 +1,236 @@
+{
+  "Header": {
+    "Time": "2026-06-30T17:05:00+10:00",
+    "ReportName": "TrialBalance",
+    "DateMacro": "this fiscal year-to-date",
+    "ReportBasis": "Accrual",
+    "StartPeriod": "2025-07-01",
+    "EndPeriod": "2026-06-30",
+    "Currency": "AUD",
+    "Option": [
+      {
+        "Name": "NoReportData",
+        "Value": "false"
+      }
+    ]
+  },
+  "Columns": {
+    "Column": [
+      {
+        "ColTitle": "",
+        "ColType": "Account"
+      },
+      {
+        "ColTitle": "Debit",
+        "ColType": "Money"
+      },
+      {
+        "ColTitle": "Credit",
+        "ColType": "Money"
+      }
+    ]
+  },
+  "Rows": {
+    "Row": [
+      {
+        "ColData": [
+          {
+            "value": "Business Cheque",
+            "id": "35"
+          },
+          {
+            "value": "18450.00"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Accounts Receivable",
+            "id": "36"
+          },
+          {
+            "value": "6820.50"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Office Equipment",
+            "id": "37"
+          },
+          {
+            "value": "4200.00"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Business Credit Card",
+            "id": "38"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "-120.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Accounts Payable",
+            "id": "40"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "3150.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "GST Liability",
+            "id": "41"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "1240.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Owner's Equity",
+            "id": "50"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "14240.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Sales",
+            "id": "60"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "42000.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Export Sales",
+            "id": "61"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "3500.00"
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Cost of Sales",
+            "id": "70"
+          },
+          {
+            "value": "21000.00"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Bank Fees",
+            "id": "71"
+          },
+          {
+            "value": "339.50"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Rent",
+            "id": "72"
+          },
+          {
+            "value": "13200.00"
+          },
+          {
+            "value": ""
+          }
+        ]
+      },
+      {
+        "ColData": [
+          {
+            "value": "Opening Balance Equity",
+            "id": "99"
+          },
+          {
+            "value": ""
+          },
+          {
+            "value": "0.00"
+          }
+        ]
+      },
+      {
+        "Summary": {
+          "ColData": [
+            {
+              "value": "TOTAL"
+            },
+            {
+              "value": "64010.00"
+            },
+            {
+              "value": "64010.00"
+            }
+          ]
+        },
+        "type": "Section",
+        "group": "GrandTotal"
+      }
+    ]
+  }
+}
