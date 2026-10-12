@@ -1,54 +1,82 @@
-const { test, after } = require('node:test');
-const assert = require('node:assert');
-const { randomUUID } = require('node:crypto');
-try { require('dotenv').config(); } catch (e) {}
-const { Pool } = require('pg');
-const persistence = require('../src/persistence');
+const { test, after } = require("node:test");
+const assert = require("node:assert/strict");
+const { randomUUID } = require("node:crypto");
+require("dotenv").config();
+const { Pool } = require("pg");
+const persistence = require("../src/persistence");
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-after(() => pool.end());
+const databaseUrl = process.env.DATABASE_URL;
+const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
 
-test('bad ids are denied without touching the database', async () => {
-  assert.strictEqual(await persistence.hasUserConnectionAccess('nope', 'nope'), false);
-  assert.strictEqual(await persistence.hasUserConnectionAccess(undefined, null), false);
-  assert.deepStrictEqual(await persistence.listConnectionsForUser('nope'), []);
+after(async () => {
+  if (pool) await pool.end();
 });
 
-// runs in a transaction that is rolled back at the end, so no test rows are left behind
-test('grant, check, list and revoke connection access', async () => {
+test("bad ids are denied without touching the database", async () => {
+  assert.equal(await persistence.hasUserConnectionAccess("nope", "nope"), false);
+  assert.equal(await persistence.hasUserConnectionAccess(undefined, null), false);
+  assert.deepEqual(await persistence.listConnectionsForUser("nope"), []);
+});
+
+test("grant, check, list and revoke connection access", { skip: !databaseUrl }, async () => {
   const client = await pool.connect();
-  const addConnection = async (name) =>
-    (await client.query(
-      `INSERT INTO connections (company_name, platform, status) VALUES ($1, 'xero', 'active') RETURNING *`,
-      [name]
-    )).rows[0];
+  const addConnection = async (name) => (
+    await client.query(
+      `INSERT INTO connections (company_name, platform, status)
+       VALUES ($1, 'xero', 'active')
+       RETURNING *`,
+      [name],
+    )
+  ).rows[0];
 
   try {
-    await client.query('BEGIN');
+    // Rollback keeps real database verification isolated from development data.
+    await client.query("BEGIN");
     const userId = randomUUID();
-    await client.query('INSERT INTO auth.users (id) VALUES ($1)', [userId]);
-    const a = await addConnection('Access A');
-    const b = await addConnection('Access B');
+    await client.query("INSERT INTO auth.users (id) VALUES ($1)", [userId]);
+    const firstConnection = await addConnection("Access A");
+    const secondConnection = await addConnection("Access B");
 
-    assert.strictEqual(await persistence.hasUserConnectionAccess(userId, a.connection_id, client), false);
-    assert.deepStrictEqual(await persistence.listConnectionsForUser(userId, client), []);
+    assert.equal(
+      await persistence.hasUserConnectionAccess(userId, firstConnection.connection_id, client),
+      false,
+    );
+    assert.deepEqual(await persistence.listConnectionsForUser(userId, client), []);
 
-    await persistence.grantUserConnectionAccess(userId, a.connection_id, client);
-    await persistence.grantUserConnectionAccess(userId, a.connection_id, client); // twice is fine
+    await persistence.grantUserConnectionAccess(userId, firstConnection.connection_id, client);
+    await persistence.grantUserConnectionAccess(userId, firstConnection.connection_id, client);
 
-    assert.strictEqual(await persistence.hasUserConnectionAccess(userId, a.connection_id, client), true);
-    assert.strictEqual(await persistence.hasUserConnectionAccess(userId, b.connection_id, client), false);
+    assert.equal(
+      await persistence.hasUserConnectionAccess(userId, firstConnection.connection_id, client),
+      true,
+    );
+    assert.equal(
+      await persistence.hasUserConnectionAccess(userId, secondConnection.connection_id, client),
+      false,
+    );
 
     const rows = await persistence.listConnectionsForUser(userId, client);
-    assert.strictEqual(rows.length, 1);
-    assert.strictEqual(rows[0].connection_id, a.connection_id);
-    assert.deepStrictEqual(Object.keys(rows[0]).sort(), Object.keys(a).sort());
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].connection_id, firstConnection.connection_id);
+    assert.deepEqual(
+      Object.keys(rows[0]).sort(),
+      Object.keys(firstConnection).sort(),
+    );
 
-    assert.deepStrictEqual(await persistence.revokeUserConnectionAccess(userId, a.connection_id, client), { revoked: true });
-    assert.deepStrictEqual(await persistence.revokeUserConnectionAccess(userId, a.connection_id, client), { revoked: false });
-    assert.strictEqual(await persistence.hasUserConnectionAccess(userId, a.connection_id, client), false);
+    assert.deepEqual(
+      await persistence.revokeUserConnectionAccess(userId, firstConnection.connection_id, client),
+      { revoked: true },
+    );
+    assert.deepEqual(
+      await persistence.revokeUserConnectionAccess(userId, firstConnection.connection_id, client),
+      { revoked: false },
+    );
+    assert.equal(
+      await persistence.hasUserConnectionAccess(userId, firstConnection.connection_id, client),
+      false,
+    );
   } finally {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     client.release();
   }
 });

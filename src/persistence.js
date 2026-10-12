@@ -219,11 +219,12 @@ async function getActivityLog(connectionId, limit = 50) {
   return result.rows;
 }
 
-// which companies a normal user can see
-const ACCESS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hasUserConnectionAccess(userId, connectionId, client = pool) {
-  if (!ACCESS_UUID_RE.test(String(userId)) || !ACCESS_UUID_RE.test(String(connectionId))) return false;
+  if (!accessUuidPattern.test(String(userId)) || !accessUuidPattern.test(String(connectionId))) {
+    return false;
+  }
   const result = await client.query(
     `SELECT EXISTS (
        SELECT 1 FROM user_connection_access
@@ -234,9 +235,9 @@ async function hasUserConnectionAccess(userId, connectionId, client = pool) {
   return result.rows[0].allowed === true;
 }
 
-// same columns as listConnections(), only the user's companies
+// Matching listConnections() keeps the route response independent of the caller's role.
 async function listConnectionsForUser(userId, client = pool) {
-  if (!ACCESS_UUID_RE.test(String(userId))) return [];
+  if (!accessUuidPattern.test(String(userId))) return [];
   const result = await client.query(
     `SELECT c.*
      FROM connections c
@@ -248,7 +249,7 @@ async function listConnectionsForUser(userId, client = pool) {
   return result.rows;
 }
 
-// granting twice is fine
+// Idempotent grants make retries safe after an uncertain network response.
 async function grantUserConnectionAccess(userId, connectionId, client = pool) {
   const result = await client.query(
     `INSERT INTO user_connection_access (user_id, connection_id)
