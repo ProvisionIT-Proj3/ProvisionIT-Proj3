@@ -14,20 +14,43 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
 
+// A shared client prevents partial OAuth records when any persistence step fails.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // ---------- CONNECTIONS ----------
 
-async function createConnection({ companyName, platform, externalAccountId }) {
-  const result = await pool.query(
-    `INSERT INTO connections (company_name, platform, status, external_account_id)
-     VALUES ($1, $2, 'active', $3)
+async function createConnection({
+  companyName,
+  platform,
+  externalConnectionId = null,
+  externalAccountId,
+  providerMetadata = {},
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO connections
+       (company_name, platform, status, external_connection_id, external_account_id, provider_metadata)
+     VALUES ($1, $2, 'active', $3, $4, $5)
      RETURNING *`,
-    [companyName, platform, externalAccountId]
+    [companyName, platform, externalConnectionId, externalAccountId, providerMetadata]
   );
   return result.rows[0];
 }
 
-async function getConnectionById(connectionId) {
-  const result = await pool.query(
+async function getConnectionById(connectionId, client = pool) {
+  const result = await client.query(
     `SELECT * FROM connections WHERE connection_id = $1`,
     [connectionId]
   );
@@ -48,45 +71,65 @@ async function deleteConnection(connectionId) {
 // Tokens live here, not on `connections`, because one Xero OAuth grant can cover
 // multiple organisations sharing the same rotating tokens (Yihan's multi-provider point).
 
-async function createCredential({ platform, accessToken, refreshToken, expiresAt }) {
-  const result = await pool.query(
-    `INSERT INTO oauth_credentials (platform, access_token, refresh_token, token_expires_at)
-     VALUES ($1, $2, $3, $4)
+async function createCredential({
+  platform,
+  accessToken = null,
+  refreshToken = null,
+  expiresAt = null,
+  status = 'active',
+}, client = pool) {
+  const result = await client.query(
+    `INSERT INTO oauth_credentials
+       (platform, access_token, refresh_token, token_expires_at, status)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [platform, accessToken, refreshToken, expiresAt]
+    [platform, accessToken, refreshToken, expiresAt, status]
   );
   return result.rows[0];
 }
 
 // Refreshing updates ONE row here — every connection referencing this credential_id
 // automatically sees the new token, no per-connection update loop needed.
-async function updateCredentialTokens(credentialId, { accessToken, refreshToken, expiresAt }) {
-  const result = await pool.query(
+async function updateCredentialTokens(
+  credentialId,
+  { accessToken, refreshToken, expiresAt, status = 'active' },
+  client = pool
+) {
+  const result = await client.query(
     `UPDATE oauth_credentials
-     SET access_token = $1, refresh_token = $2, token_expires_at = $3
-     WHERE credential_id = $4
+     SET access_token = $1,
+         refresh_token = $2,
+         token_expires_at = $3,
+         status = $4,
+         updated_at = now()
+     WHERE credential_id = $5
      RETURNING *`,
-    [accessToken, refreshToken, expiresAt, credentialId]
+    [accessToken, refreshToken, expiresAt, status, credentialId]
   );
   return result.rows[0];
 }
 
-// Links a connection (one company/tenant) to a shared credential
-async function linkConnectionToCredential(connectionId, credentialId, externalAccountId) {
-  const result = await pool.query(
+// The provider account ID is saved when the connection is created. Linking a
+// credential must not be able to erase it during a later update.
+async function linkConnectionToCredential(connectionId, credentialId, client = pool) {
+  const result = await client.query(
     `UPDATE connections
-     SET credential_id = $1, external_account_id = $2
-     WHERE connection_id = $3
-     RETURNING connection_id, company_name, platform, status, external_account_id, credential_id`,
-    [credentialId, externalAccountId, connectionId]
+     SET credential_id = $1
+     WHERE connection_id = $2
+     RETURNING connection_id, company_name, platform, status,
+               external_connection_id, external_account_id, provider_metadata, credential_id`,
+    [credentialId, connectionId]
   );
   return result.rows[0];
 }
 
 // Gets a connection's current tokens by following its credential_id
-async function getTokensForConnection(connectionId) {
-  const result = await pool.query(
-    `SELECT oc.access_token, oc.refresh_token, oc.token_expires_at
+async function getTokensForConnection(connectionId, client = pool) {
+  const result = await client.query(
+    `SELECT oc.access_token,
+            oc.refresh_token,
+            oc.token_expires_at,
+            oc.status AS credential_status
      FROM connections c
      JOIN oauth_credentials oc ON oc.credential_id = c.credential_id
      WHERE c.connection_id = $1`,
@@ -270,6 +313,7 @@ async function revokeUserConnectionAccess(userId, connectionId, client = pool) {
 }
 
 module.exports = {
+  withTransaction,
   hasUserConnectionAccess, listConnectionsForUser,
   grantUserConnectionAccess, revokeUserConnectionAccess,
   createConnection, getConnectionById, listConnections, deleteConnection,
