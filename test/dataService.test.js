@@ -34,6 +34,7 @@ inject("../src/connector/xero/accounts.js", {
 inject("../src/connector/xero/trialBalance.js", {
     getTrialBalance: async () => ({
       ReportID: "TrialBalance",
+      ReportDate: "30 June 2026",
       Rows: [
         {
           RowType: "Section",
@@ -71,7 +72,8 @@ test("syncAccounts stores canonical account rows, not raw Xero fields", async ()
 
   assert.equal(saved.length, 1);
   assert.equal(saved[0].connectionId, connectionId);
-  assert.match(saved[0].reportDate, /^\d{4}-\d{2}-\d{2}$/);
+  // Taken from the report's own ReportDate, not the server clock.
+  assert.equal(saved[0].reportDate, "2026-06-30");
   assert.equal(result.data.saved, 2);
 
   const [header, detail] = saved[0].accounts; // synthesized section header + the one detail row

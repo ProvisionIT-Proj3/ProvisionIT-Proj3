@@ -128,8 +128,8 @@ async function getAccountsByConnection(connectionId) {
   return result.rows;
 }
 
-// Stores the full account list for one connection, as produced by Chris's
-// buildXeroAccounts() (canonical shape, already in report order).
+// Stores the full account list for one connection, as produced by the
+// connector's mapper (canonical shape, already in report order).
 //
 // Accounts are a report snapshot, not independent records: accounts can be
 // renamed, archived or disappear between syncs. So this REPLACES the stored

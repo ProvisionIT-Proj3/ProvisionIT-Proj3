@@ -1,7 +1,7 @@
 const persistence = require("../persistence");
 const { registry } = require("../auth");
 const { createConnector } = require("../connector/connectorFactory");
-const { toCanonicalList } = require("./canonicalMapper");
+const { toCanonicalList, assertStorable } = require("./canonicalMapper");
 const { parsePagination } = require("./validation");
 
 // Accounts are STORED, not fetched per request:
@@ -64,16 +64,29 @@ async function getAccounts(connectionId, query = {}) {
   };
 }
 
+// Connectors read the as-of date off the report itself, so it is the
+// company's date, not the server's. Today's UTC date is only a fallback for a
+// connector or report that doesn't provide one.
+async function fetchAccountsReport(connector, connectionId) {
+  const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+  if (typeof connector.getAccountsReport === "function") {
+    const { accounts, reportDate } = await connector.getAccountsReport(connectionId);
+    return { accounts, reportDate: reportDate || todayUtc() };
+  }
+
+  return { accounts: await connector.getAccounts(connectionId), reportDate: todayUtc() };
+}
+
 /**
  * Fetch the live account report from the accounting system and replace the
  * stored snapshot for this connection.
  */
 async function syncAccounts(connectionId) {
   const connector = await getConnector(connectionId);
-  const accounts = await connector.getAccounts(connectionId);
+  const { accounts, reportDate } = await fetchAccountsReport(connector, connectionId);
 
-  // The trial balance is requested "as of today", so that is the report date.
-  const reportDate = new Date().toISOString().slice(0, 10);
+  assertStorable("account", accounts);
   const { saved } = await persistence.saveAccounts(connectionId, accounts, reportDate);
 
   return { data: { saved, reportDate, syncedAt: new Date().toISOString() } };
@@ -84,10 +97,10 @@ async function syncAccounts(connectionId) {
 // vendor report is not returned: it is a nested object that differs per platform.
 async function getTrialBalance(connectionId) {
   const connector = await getConnector(connectionId);
-  const accounts = await connector.getAccounts(connectionId);
+  const { accounts, reportDate } = await fetchAccountsReport(connector, connectionId);
   // _vendorSpecific is mapper-internal detail, not part of the canonical shape.
   const data = accounts.map(({ _vendorSpecific, ...account }) => account);
-  return { data, meta: { live: true, fetchedAt: new Date().toISOString() } };
+  return { data, meta: { live: true, reportDate, fetchedAt: new Date().toISOString() } };
 }
 
 module.exports = { getAccounts, syncAccounts, getTrialBalance };

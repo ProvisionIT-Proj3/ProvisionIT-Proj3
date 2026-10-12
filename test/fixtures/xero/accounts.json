@@ -1,0 +1,175 @@
+{
+  "Accounts": [
+    {
+      "AccountID": "da962997-a8bd-4dff-9616-01cdc199283f",
+      "Code": "002",
+      "Name": "Big Expense",
+      "Type": "REVENUE",
+      "Class": "REVENUE",
+      "Status": "ACTIVE",
+      "TaxType": "OUTPUT"
+    },
+    {
+      "AccountID": "02439bca-5fdc-4b62-b281-0bdf9f16fd5b",
+      "Code": "400",
+      "Name": "Sales",
+      "Type": "REVENUE",
+      "Class": "REVENUE",
+      "Status": "ACTIVE",
+      "TaxType": "OUTPUT"
+    },
+    {
+      "AccountID": "3f50db14-1fe6-450b-bfe8-b2d894f18c62",
+      "Code": "1302",
+      "Name": "Sales-35325",
+      "Type": "REVENUE",
+      "Class": "REVENUE",
+      "Status": "ACTIVE",
+      "TaxType": "OUTPUT"
+    },
+    {
+      "AccountID": "d1602f69-f900-4616-8d34-90af393fa368",
+      "Code": "123",
+      "Name": "Foobar14043",
+      "Type": "EXPENSE",
+      "Class": "EXPENSE",
+      "Status": "ACTIVE",
+      "TaxType": "INPUT"
+    },
+    {
+      "AccountID": "90f10e0a-a043-46fe-b87e-630e9a951dae",
+      "Code": "1231239",
+      "Name": "MyExp51937",
+      "Type": "EXPENSE",
+      "Class": "EXPENSE",
+      "Status": "ACTIVE",
+      "TaxType": "INPUT"
+    },
+    {
+      "AccountID": "31ae5bb4-611c-4f89-a369-86e4d56e90b6",
+      "Code": "120",
+      "Name": "Accounts Receivable",
+      "Type": "CURRENT",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "6f7594f2-f059-4d56-9e67-47ac9733bfe9",
+      "Code": "088",
+      "Name": "Business Wells Fargo",
+      "Type": "BANK",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "f4be973a-25fc-48d0-a7df-7f719f239729",
+      "Code": "8003",
+      "Name": "Generic Cash Clearing",
+      "Type": "CURRENT",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "a10867ac-0bc4-4aa5-af00-b9e5b207c6c3",
+      "Code": "8002",
+      "Name": "Generic Credit Card Clearing",
+      "Type": "CURRENT",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "7422f1b6-619f-488c-89e1-91bdde20216c",
+      "Code": "1400",
+      "Name": "Generic Inventory",
+      "Type": "INVENTORY",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "7e5e243b-9fcd-4aef-8e3a-c70be1e39bfa",
+      "Code": "090",
+      "Name": "My Savings",
+      "Type": "BANK",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "bc06840c-12c5-4e22-bb57-fef4d64bac10",
+      "Code": "8001",
+      "Name": "Payment Wall Clearing Account",
+      "Type": "CURRENT",
+      "Class": "ASSET",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "e9132ee7-4dcf-4fad-b76c-86e212af645a",
+      "Code": "200",
+      "Name": "Accounts Payable",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "f22cd74e-f59d-4f38-a08d-07e14df28c24",
+      "Code": "2300",
+      "Name": "Deferred Revenue",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "f0072999-8f7c-4b01-bce9-bd9352f98e02",
+      "Code": "260",
+      "Name": "Rounding",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "af0be362-45fe-4730-a8af-634c2fb93f4d",
+      "Code": "220",
+      "Name": "Sales Tax",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "5ec2f302-cd60-4f8b-a915-9229dd45e6fa",
+      "Code": "250",
+      "Name": "Suspense",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "38e6967d-4da1-4a93-85f1-ea3c93b61041",
+      "Code": "210",
+      "Name": "Unpaid Expense Claims",
+      "Type": "CURRLIAB",
+      "Class": "LIABILITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    },
+    {
+      "AccountID": "6ef53919-b47d-4341-b11a-735a3f8a6515",
+      "Code": "320",
+      "Name": "Retained Earnings",
+      "Type": "EQUITY",
+      "Class": "EQUITY",
+      "Status": "ACTIVE",
+      "TaxType": "BASEXCLUDED"
+    }
+  ]
+}
