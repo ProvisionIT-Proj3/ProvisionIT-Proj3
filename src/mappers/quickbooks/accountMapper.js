@@ -15,6 +15,10 @@ const { parseAmount, buildAccountRows } = require('../shared/accountRows');
 
 const COLUMN_INDEX = { ACCOUNT: 0, DEBIT: 1, CREDIT: 2 };
 
+// "TOTAL", "Total Assets", "Total: Revenue" ... but not an account that merely
+// starts with the letters, like "Totalizer Fees".
+const TOTAL_LINE_LABEL = /^\s*total\b/i;
+
 const DR_CR_BY_CLASSIFICATION = {
   Asset: 'Dr',
   Expense: 'Dr',
@@ -107,6 +111,33 @@ function parseTrialBalanceReport(rawReport) {
     };
   }
 
+  // A data row is an account unless it is a total line. QuickBooks puts totals
+  // in Summary rows, but an id-less row labelled "TOTAL" / "Total ..." would
+  // otherwise be counted as an account and double its section's balance.
+  // Account rows always carry an id, so a row with an id is never skipped.
+  function toAccountRow(row) {
+    const account = parseAccountRow(row);
+    const isTotalLine = !account.accountId && TOTAL_LINE_LABEL.test(String(account.name ?? ''));
+    return isTotalLine ? null : account;
+  }
+
+  // Account rows of a section, descending into any nested section so a
+  // sub-account grouped under a parent is kept rather than silently dropped.
+  // Nested subtotals are ignored; the outer section's own Summary still covers them.
+  function collectAccountRows(childRows) {
+    const rows = [];
+    for (const child of childRows || []) {
+      if (!child) continue;
+      if (child.type === 'Section') {
+        rows.push(...collectAccountRows(child.Rows?.Row));
+      } else if ((child.type === 'Data' || child.type == null) && Array.isArray(child.ColData)) {
+        const account = toAccountRow(child);
+        if (account) rows.push(account);
+      }
+    }
+    return rows;
+  }
+
   function flushFlatRows() {
     if (flatRows.length === 0) return;
 
@@ -120,6 +151,7 @@ function parseTrialBalanceReport(rawReport) {
   }
 
   for (const row of topRows) {
+    if (!row) continue;
     if (row.type === 'Section') {
       flushFlatRows();
 
@@ -128,10 +160,7 @@ function parseTrialBalanceReport(rawReport) {
       // QuickBooks can return a summary-only Section (e.g. the GrandTotal row) with no account rows.
       if (!title) continue;
 
-      const rows = (row.Rows?.Row || [])
-        .filter((child) => child.type === 'Data' || child.type == null)
-        .filter((child) => Array.isArray(child.ColData))
-        .map(parseAccountRow);
+      const rows = collectAccountRows(row.Rows?.Row);
 
       const summaryCells = row.Summary?.ColData;
       const summary = summaryCells
@@ -146,9 +175,11 @@ function parseTrialBalanceReport(rawReport) {
     }
 
     // QuickBooks Trial Balance reports usually return flat account rows at the top level.
+    // A row without an id is kept (as "unmatched:<name>") like a nested one, so its balance isn't lost,
+    // unless it is a total line (see toAccountRow).
     if ((row.type === 'Data' || row.type == null) && Array.isArray(row.ColData)) {
-      const account = parseAccountRow(row);
-      if (account.accountId) flatRows.push(account);
+      const account = toAccountRow(row);
+      if (account) flatRows.push(account);
     }
   }
 
@@ -199,5 +230,6 @@ module.exports = {
   buildQuickbooksAccounts,
   getQuickbooksReportDate,
   mapQuickbooksTaxCode,
+  QBO_TAX_CODE_NAME_TO_CLIENT_CODE,
   DR_CR_BY_CLASSIFICATION,
 };

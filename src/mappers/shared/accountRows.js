@@ -7,26 +7,34 @@ const { toMoney } = require('../../canonical/utils');
  * for every vendor, so a fix here applies to all of them.
  */
 
+// Plain decimal, or digits grouped in threes ("1,234.50"); a comma anywhere
+// else (e.g. European "1.234,50") is rejected rather than misread.
+const PLAIN_AMOUNT = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+const GROUPED_AMOUNT = /^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/;
+
 /**
  * Parse a report amount. Empty means 0. Tolerates thousands separators, a
  * currency symbol and accounting-style negatives "(50.00)". Throws on anything
- * else rather than silently reporting a zero balance.
+ * else (including Infinity, exponents and hex, which Number() would accept)
+ * rather than silently reporting a wrong balance.
  *
  * @param {*} raw - the cell's value
  * @param {string} vendorLabel - used in the error message, e.g. 'QuickBooks'
  */
 function parseAmount(raw, vendorLabel) {
   if (raw === '' || raw === undefined || raw === null) return 0;
-  if (typeof raw === 'number') return raw;
 
-  let text = String(raw).trim().replace(/[,$\s]/g, '');
+  const fail = () => new Error(`Unparseable ${vendorLabel} report amount: ${JSON.stringify(raw)}`);
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) throw fail();
+    return raw;
+  }
+
+  let text = String(raw).trim().replace(/[$\s]/g, '');
   if (/^\(.*\)$/.test(text)) text = `-${text.slice(1, -1)}`;
 
-  const n = Number(text);
-  if (text === '' || Number.isNaN(n)) {
-    throw new Error(`Unparseable ${vendorLabel} report amount: ${JSON.stringify(raw)}`);
-  }
-  return n;
+  if (!PLAIN_AMOUNT.test(text) && !GROUPED_AMOUNT.test(text)) throw fail();
+  return Number(text.replace(/,/g, ''));
 }
 
 /**

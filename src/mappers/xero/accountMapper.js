@@ -43,6 +43,8 @@ const XERO_TAX_TYPE_TO_CLIENT_CODE = {
   EXEMPTOUTPUT: 'FRE',
   EXEMPTINPUT: 'FRE',
   EXEMPTEXPORT: 'FRE',
+  EXEMPTCAPITAL: 'FRE',
+  EXEMPTEXPENSES: 'FRE',
   GSTONCAPIMPORTS: 'GCA',
   CAPEXINPUT: 'GCA',
   CAPEXOUTPUT: 'GCA',
@@ -117,12 +119,13 @@ function parseTrialBalanceReport(rawReport) {
   const sections = [];
 
   for (const row of report.Rows || []) {
-    if (row.RowType !== 'Section') continue; // skip the column-header Row
+    if (row?.RowType !== 'Section') continue; // skip the column-header Row
 
     const rows = [];
     let summary = null;
 
     for (const sectionRow of row.Rows || []) {
+      if (!sectionRow) continue;
       const cells = sectionRow.Cells || [];
 
       if (sectionRow.RowType === 'Row') {
@@ -198,5 +201,6 @@ module.exports = {
   buildXeroAccounts,
   getXeroReportDate,
   mapXeroTaxCode,
+  XERO_TAX_TYPE_TO_CLIENT_CODE,
   DR_CR_BY_CLASS,
 };

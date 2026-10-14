@@ -86,6 +86,16 @@ async function syncAccounts(connectionId) {
   const connector = await getConnector(connectionId);
   const { accounts, reportDate } = await fetchAccountsReport(connector, connectionId);
 
+  // Storing replaces the whole snapshot, so an empty report (a period with no
+  // activity, or a response we couldn't read anything from) must not wipe the
+  // accounts already stored.
+  if (accounts.length === 0) {
+    const err = new Error("The accounting system returned no accounts, so the stored accounts were left unchanged.");
+    err.status = 502;
+    err.code = "EMPTY_REPORT";
+    throw err;
+  }
+
   assertStorable("account", accounts);
   const { saved } = await persistence.saveAccounts(connectionId, accounts, reportDate);
 
