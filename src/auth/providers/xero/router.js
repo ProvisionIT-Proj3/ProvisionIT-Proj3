@@ -59,7 +59,7 @@ function createXeroRouter({ service, assertConfigured, authenticate, requirePerm
   router.delete("/xero/connections/:connectionId", authenticate, manageConnections, async (req, res, next) => {
     try {
       assertConfigured();
-      await service.disconnect(req.params.connectionId);
+      await service.disconnect(req.params.connectionId, { actorUserId: req.user?.id });
       res.status(204).end();
     } catch (error) {
       next(error);

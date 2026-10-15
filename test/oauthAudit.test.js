@@ -99,3 +99,25 @@ test("failed authorization records an error code without secrets", async () => {
   }]);
   assert.doesNotMatch(JSON.stringify(events), /secret-code|secret details/);
 });
+
+test("disconnect audit retains the trusted actor on success and failure", async () => {
+  for (const outcome of ["success", "failure"]) {
+    const { service, events } = createService();
+    service.connectionStore.getByConnectionId = async () => ({
+      provider: "xero", connectionId: "connection-1", expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    service.connectionStore.deleteByConnectionId = async () => {};
+    service.provider.disconnect = async () => {
+      if (outcome === "failure") throw new Error("private provider details");
+    };
+    const operation = service.disconnect("connection-1", { actorUserId: "admin-user" });
+    if (outcome === "failure") await assert.rejects(operation, /private provider details/);
+    else await operation;
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].actorUserId, "admin-user");
+    assert.equal(events[0].connectionId, "connection-1");
+    assert.equal(events[0].outcome, outcome);
+    assert.doesNotMatch(JSON.stringify(events), /private provider details/);
+  }
+});

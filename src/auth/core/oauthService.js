@@ -1,8 +1,27 @@
 const { createHttpError } = require("./errors");
 const crypto = require("node:crypto");
 
-function toExpiresAt(expiresIn) {
-  return new Date(Date.now() + Number(expiresIn || 0) * 1000).toISOString();
+function toStoredTokens(tokens, previousRefreshToken) {
+  const expiresIn = tokens?.expires_in;
+  const seconds = typeof expiresIn === "number" || typeof expiresIn === "string"
+    ? Number(expiresIn)
+    : NaN;
+  const expiresAt = Date.now() + seconds * 1000;
+  if (typeof tokens?.access_token !== "string" || !tokens.access_token.trim()
+    || !Number.isFinite(seconds) || seconds <= 0 || !Number.isFinite(expiresAt)
+    || expiresAt > 8.64e15) {
+    throw createHttpError("The provider returned an invalid token response.", 502, "INVALID_OAUTH_TOKEN_RESPONSE");
+  }
+  const refreshToken = tokens.refresh_token ?? previousRefreshToken;
+  if (refreshToken !== undefined && refreshToken !== null
+    && (typeof refreshToken !== "string" || !refreshToken.trim())) {
+    throw createHttpError("The provider returned an invalid token response.", 502, "INVALID_OAUTH_TOKEN_RESPONSE");
+  }
+  return {
+    accessToken: tokens.access_token,
+    refreshToken,
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
 }
 
 function toPublicConnection(connection) {
@@ -53,9 +72,12 @@ class OAuthService {
         throw createHttpError("Invalid or expired OAuth state.", 400, "INVALID_OAUTH_STATE");
       }
       if (error) throw this.provider.authorizationDeniedError(error);
-      if (!code) throw createHttpError("The provider did not return an authorization code.", 400, "MISSING_AUTHORIZATION_CODE");
+      if (typeof code !== "string" || !code.trim()) {
+        throw createHttpError("The provider did not return an authorization code.", 400, "MISSING_AUTHORIZATION_CODE");
+      }
 
       const tokens = await this.provider.exchangeAuthorizationCode(code, this.fetch);
+      const storedTokens = toStoredTokens(tokens);
       const accounts = await this.provider.discoverAccounts({
         authorization,
         tokens,
@@ -68,11 +90,7 @@ class OAuthService {
         connectionId: this.idFactory(),
         provider: this.provider.id,
       }));
-      const saved = await this.connectionStore.saveAuthorization(connections, {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt: toExpiresAt(tokens.expires_in),
-      });
+      const saved = await this.connectionStore.saveAuthorization(connections, storedTokens);
       await this.recordAudit({
         actorUserId: stateRecord.actorUserId,
         action: "oauth.completed",
@@ -126,18 +144,20 @@ class OAuthService {
     });
   }
 
-  async disconnect(connectionId) {
+  async disconnect(connectionId, { actorUserId } = {}) {
     try {
       const connection = await this.getValidConnection(connectionId);
       await this.provider.disconnect(connection, this.fetch);
       await this.connectionStore.deleteByConnectionId(connectionId);
       await this.recordAudit({
+        actorUserId,
         connectionId,
         action: "connection.disconnected",
         outcome: "success",
       });
     } catch (disconnectError) {
       await this.recordAudit({
+        actorUserId,
         connectionId,
         action: "connection.disconnected",
         outcome: "failure",
@@ -174,11 +194,11 @@ class OAuthService {
   async refreshConnection(connectionId, connection) {
     try {
       const tokens = await this.provider.refreshTokens(connection.refreshToken, this.fetch);
-      const updated = await this.connectionStore.updateTokens(connectionId, {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt: toExpiresAt(tokens.expires_in),
-      });
+      // Providers may omit refresh_token when the existing token remains valid.
+      const updated = await this.connectionStore.updateTokens(
+        connectionId, toStoredTokens(tokens, connection.refreshToken),
+      );
+      if (!updated) throw this.provider.connectionNotFoundError();
       await this.recordAudit({
         connectionId,
         action: "token.refreshed",

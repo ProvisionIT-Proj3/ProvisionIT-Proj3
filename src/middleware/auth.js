@@ -247,7 +247,7 @@ function createAccessControl({
           "This user does not have an access-control profile.",
         ));
       }
-      if (!rolePermissions[req.user.role]?.includes(permission)) {
+      if (!Object.hasOwn(rolePermissions, req.user.role) || !rolePermissions[req.user.role].includes(permission)) {
         await recordAudit(req, {
           actorUserId: req.user.id,
           action: "authorization.denied",

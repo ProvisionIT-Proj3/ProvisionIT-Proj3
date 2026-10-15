@@ -1,4 +1,5 @@
 const ALLOWED_OUTCOMES = new Set(["success", "failure", "denied"]);
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_METADATA_FIELDS = new Set([
   "connectionCount",
   "method",
@@ -23,6 +24,15 @@ function cleanMetadataValue(value) {
   return undefined;
 }
 
+function cleanUuid(value) {
+  // An invalid request ID must not prevent a denied request from being audited.
+  return typeof value === "string" && uuidPattern.test(value) ? value : null;
+}
+
+function reportWriteFailure() {
+  console.warn("Security audit event could not be saved.");
+}
+
 function sanitizeMetadata(metadata) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return {};
   const sanitized = {};
@@ -45,8 +55,8 @@ function normalizeEvent(event, occurredAt) {
 
   return {
     occurredAt,
-    actorUserId: cleanText(event.actorUserId, 128),
-    connectionId: cleanText(event.connectionId, 128),
+    actorUserId: cleanUuid(event.actorUserId),
+    connectionId: cleanUuid(event.connectionId),
     provider: cleanText(event.provider, 32),
     action,
     outcome: event.outcome,
@@ -56,7 +66,7 @@ function normalizeEvent(event, occurredAt) {
   };
 }
 
-function createAuditLogger({ persistence, clock = () => new Date(), onWriteFailure = () => {} } = {}) {
+function createAuditLogger({ persistence, clock = () => new Date(), onWriteFailure = reportWriteFailure } = {}) {
   if (!persistence || typeof persistence.writeAuditEvent !== "function") {
     throw new TypeError("Audit logger requires persistence.writeAuditEvent(event).");
   }

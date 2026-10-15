@@ -1,3 +1,5 @@
+const { assertRedirectUri } = require("../../core/urlValidation");
+
 const DEFAULT_SCOPES = [
   "offline_access",
   "accounting.settings.read",
@@ -33,21 +35,7 @@ function assertXeroConfigured(config) {
     throw error;
   }
 
-  try {
-    const redirectUrl = new URL(config.redirectUri);
-    if (redirectUrl.protocol !== "https:" && redirectUrl.hostname !== "localhost") {
-      const error = new Error("XERO_REDIRECT_URI must use HTTPS, except for localhost development.");
-      error.status = 500;
-      error.code = "INVALID_OAUTH_CONFIGURATION";
-      throw error;
-    }
-  } catch (error) {
-    if (error.code === "INVALID_OAUTH_CONFIGURATION") throw error;
-    const invalid = new Error("XERO_REDIRECT_URI must be an absolute URL.");
-    invalid.status = 500;
-    invalid.code = "INVALID_OAUTH_CONFIGURATION";
-    throw invalid;
-  }
+  assertRedirectUri(config.redirectUri, "XERO_REDIRECT_URI");
 }
 
 module.exports = { getXeroConfig, assertXeroConfigured };
