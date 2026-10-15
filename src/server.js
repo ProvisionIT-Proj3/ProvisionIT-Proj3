@@ -1,5 +1,5 @@
-// Entry point (npm start). Loads .env, checks the settings, then starts listening.
-// If a required setting is missing it stops here with a message.
+// Settings are checked before the app loads, so a bad deploy stops at boot
+// instead of failing on the first request.
 
 require("dotenv").config();
 const { checkEnv } = require("./config/checkEnv");

@@ -1,5 +1,5 @@
-// The /api/v1 routes. Each one checks login and permission first, then hands
-// the work to dataService.
+// Routes stay thin on purpose: login and permission checks here, the real work
+// in dataService.
 
 const express = require("express");
 const router = express.Router();
