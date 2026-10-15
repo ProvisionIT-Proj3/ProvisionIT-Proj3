@@ -1,3 +1,6 @@
+// The /api/v1 routes. Each one checks login and permission first, then hands
+// the work to dataService.
+
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");

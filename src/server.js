@@ -1,3 +1,6 @@
+// Entry point (npm start). Loads .env, checks the settings, then starts listening.
+// If a required setting is missing it stops here with a message.
+
 require("dotenv").config();
 const { checkEnv } = require("./config/checkEnv");
 

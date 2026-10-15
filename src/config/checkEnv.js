@@ -1,7 +1,7 @@
-// Startup check for configuration, so a bad deploy fails loudly at boot
-// instead of at the first request. Never prints values, only variable names.
+// Checks the settings when the server starts, so a bad deploy fails straight away
+// instead of on the first request. Only variable names are printed, never values.
 //
-// Returns { errors, warnings }. server.js exits when there are errors.
+// Returns { errors, warnings }. server.js exits if there are any errors.
 
 function isTrue(value) {
   return String(value).toLowerCase() === "true";
