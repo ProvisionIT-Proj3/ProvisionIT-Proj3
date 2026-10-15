@@ -23,7 +23,27 @@ npm start                # http://localhost:3000
 npm test
 ```
 
-Create the accounts table once (see `db/migrations/001_create_accounts.sql`).
+Apply the SQL files in `db/migrations/` to your database in filename order
+(001 accounts, 002 OAuth persistence, 004 user profiles, 005 user connection access).
+
+`npm test` runs the backend tests. Three of them (`persistenceDates`,
+`persistenceTransaction`, `userConnectionAccess`) use the real `DATABASE_URL`
+and write temporary rows, so point it at a development database.
+
+## Project layout
+
+```
+src/routes/          the HTTP routes under /api/v1
+src/services/        dataService (sync and read), canonicalMapper, validation
+src/connector/       one connector per platform (xero, quickbooks) behind connectorFactory
+src/mappers/         turn each platform's raw data into the canonical account shape
+src/auth/            OAuth for Xero and QuickBooks, encrypted token storage
+src/middleware/      login and role checks (auth.js)
+src/persistence.js   all database access
+portal/              the admin portal (see portal/README.md)
+db/migrations/       SQL for the database, applied in order
+test/                backend tests
+```
 
 ## Endpoints (`/api/v1`)
 
@@ -32,6 +52,7 @@ Create the accounts table once (see `db/migrations/001_create_accounts.sql`).
 | GET | `/accounts?connectionId=<uuid>&page=1&pageSize=100` | Stored accounts in report order |
 | POST | `/sync?connectionId=<uuid>` | Fetch from the accounting system and replace the stored snapshot |
 | GET | `/trial-balance?connectionId=<uuid>` | Live trial balance, same canonical list as `/accounts` (fetched from the accounting system, not stored) |
+| GET | `/connections` | Connected companies for the portal (display fields only, no tokens). A `user` sees only their assigned connections |
 
 `GET /accounts` returns:
 
