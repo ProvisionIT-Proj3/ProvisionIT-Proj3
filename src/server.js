@@ -1,3 +1,6 @@
+// Settings are checked before the app loads, so a bad deploy stops at boot
+// instead of failing on the first request.
+
 require("dotenv").config();
 const { checkEnv } = require("./config/checkEnv");
 

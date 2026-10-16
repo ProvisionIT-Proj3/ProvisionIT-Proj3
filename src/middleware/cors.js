@@ -1,13 +1,10 @@
-// CORS for a portal that is hosted on a different origin than the API
-// (e.g. https://portal.vercel.app calling https://api.up.railway.app).
+// CORS, so the portal on Vercel can call the API on Railway.
 //
-// OFF by default: with CORS_ORIGINS unset no CORS headers are sent, which is
-// exactly how the API behaved before (the dev server uses a proxy instead).
-//
-// CORS_ORIGINS is a comma separated allow list of exact origins, no paths:
+// Off unless CORS_ORIGINS is set. Put the portal address in it (comma separated,
+// no path, no trailing slash):
 //   CORS_ORIGINS=https://portal.vercel.app,https://admin.example.com
-// Only origins on the list are echoed back. There is no "*" on purpose.
-// Auth uses a bearer header, not cookies, so credentials are never allowed.
+// Only addresses on the list get an answer. No "*" on purpose, and no cookies
+// are used (the token goes in the Authorization header) so credentials stay off.
 
 function parseOrigins(value) {
   return String(value || "")

@@ -1,3 +1,6 @@
+// Routes stay thin on purpose: login and permission checks here, the real work
+// in dataService.
+
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
