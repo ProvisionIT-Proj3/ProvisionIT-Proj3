@@ -1,0 +1,42 @@
+# Runs the tests on every pull request and on every push to main, so a broken
+# change shows up as a red cross before it gets merged (and before Railway and
+# Vercel redeploy from main).
+#
+# The 3 backend tests that write to a real database are skipped here because
+# there is no DATABASE_URL in CI.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  portal:
+    name: Portal tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
