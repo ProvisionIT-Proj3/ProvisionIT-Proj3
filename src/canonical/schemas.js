@@ -16,8 +16,10 @@ const SCHEMAS = {
   account: ACCOUNT_SCHEMA,
 };
 
+const isMissing = (value) => value === undefined || value === null || value === '';
+
 /**
- * Validate a mapped canonical object against its schema's required fields.
+ * Check a mapped object for its schema's required fields.
  * @param {'account'} entityName
  * @param {object} obj
  * @returns {{ valid: boolean, errors: string[] }}
@@ -28,12 +30,10 @@ function validate(entityName, obj) {
     return { valid: false, errors: [`Unknown canonical entity '${entityName}'`] };
   }
 
-  const errors = [];
-  for (const [field, rules] of Object.entries(schema)) {
-    if (rules.required && (obj[field] === undefined || obj[field] === null || obj[field] === '')) {
-      errors.push(`Missing required canonical field '${field}' (${rules.description})`);
-    }
-  }
+  const errors = Object.entries(schema)
+    .filter(([field, rules]) => rules.required && isMissing(obj[field]))
+    .map(([field, rules]) => `Missing required canonical field '${field}' (${rules.description})`);
+
   return { valid: errors.length === 0, errors };
 }
 
