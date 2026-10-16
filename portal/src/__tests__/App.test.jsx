@@ -20,10 +20,10 @@ describe('whole portal on sample data', () => {
     );
 
     // page remounts once the first company loads, so look the row up after that
-    const plumb = (await screen.findByText('Plumb Co', { selector: 'td' })).closest('tr');
+    const plumb = (await screen.findByText('Plumb Co', { selector: 'button' })).closest('tr');
     expect(within(plumb).getByText('Token expired')).toBeInTheDocument();
 
-    await user.click(within(plumb).getByRole('button', { name: /view accounts/i }));
+    await user.click(within(plumb).getByRole('button', { name: 'Plumb Co' }));
     expect(await screen.findByRole('heading', { name: 'Accounts' })).toBeInTheDocument();
     expect(await screen.findByText('Cheque Account')).toBeInTheDocument();
     expect(screen.getByLabelText('Active company')).toHaveValue('c2');
@@ -31,14 +31,27 @@ describe('whole portal on sample data', () => {
     await user.click(screen.getByRole('link', { name: 'Trial balance' }));
     expect(await screen.findByRole('heading', { name: 'Trial balance' })).toBeInTheDocument();
     expect(await screen.findByText('Accounts Receivable')).toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('link', { name: 'Invoices' }));
-    expect(await screen.findByRole('heading', { name: 'Invoices' })).toBeInTheDocument();
-    expect(await screen.findByText('INV-1100')).toBeInTheDocument();
+  it('shows the sample trial balance in balance', async () => {
+    render(
+      <MemoryRouter initialEntries={['/trial-balance']}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/in balance/i)).toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('link', { name: 'Payments' }));
-    expect(await screen.findByRole('heading', { name: 'Payments' })).toBeInTheDocument();
-    expect(await screen.findByText('PAY-1100')).toBeInTheDocument();
+  it('keeps the sample-data pages out of the menu but reachable by URL', async () => {
+    render(
+      <MemoryRouter initialEntries={['/payments']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('PAY-1000')).toBeInTheDocument();
+    const menu = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual(['Connections', 'Accounts', 'Trial balance']);
   });
 
   it('pages through invoices and filters by status', async () => {

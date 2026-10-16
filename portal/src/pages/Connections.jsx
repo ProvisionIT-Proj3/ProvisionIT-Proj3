@@ -15,26 +15,33 @@ export default function Connections() {
     navigate('/accounts');
   };
 
+  const count = connections.length;
+  const subtitle = status === 'ready' ? `${count} ${count === 1 ? 'company' : 'companies'}` : 'Companies linked to an accounting platform';
+
   return (
     <>
-      <PageHeader title="Connections" subtitle="Companies linked to an accounting platform" />
+      <PageHeader title="Connections" subtitle={subtitle} />
       <DataTable
-        columns={['Company', 'Platform', 'Status', 'Connected', 'Last synced', '']}
+        className="connections"
+        columns={['Company', 'Status', 'Last synced', 'Open']}
+        columnClasses={['', '', '', 'open-col']}
         list={{ status, items: connections, pagination: null, error, reload }}
         emptyMessage="No companies are connected yet."
         renderRow={(c) => (
-          <tr key={c.id}>
-            <td>{c.companyName}</td>
-            <td>{PLATFORM_LABELS[c.platform] ?? c.platform}</td>
-            <td>
+          <tr key={c.id} className="row-link-parent">
+            <td className="cell-main">
+              {/* the button stretches over the whole row, so the row is one big click target */}
+              <button className="row-link" onClick={() => open(c.id)}>
+                {c.companyName}
+              </button>
+              <span className="platform">{PLATFORM_LABELS[c.platform] ?? c.platform}</span>
+            </td>
+            <td className="cell-status">
               <StatusBadge status={c.status} />
             </td>
-            <td>{formatDate(c.connectedAt)}</td>
-            <td>{c.lastSyncedAt ? formatDate(c.lastSyncedAt) : 'Never'}</td>
-            <td>
-              <button className="btn ghost sm" onClick={() => open(c.id)}>
-                View accounts
-              </button>
+            <td className="cell-date">{c.lastSyncedAt ? formatDate(c.lastSyncedAt) : <span className="soft">Not yet</span>}</td>
+            <td className="cell-open" aria-hidden="true">
+              Open
             </td>
           </tr>
         )}

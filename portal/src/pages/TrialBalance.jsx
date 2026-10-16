@@ -7,7 +7,13 @@ import SampleBanner from '../components/SampleBanner';
 
 function Report({ connection }) {
   const list = useList(() => api.getTrialBalance(connection.id), [connection.id]);
-  return <AccountTable list={list} emptyMessage="No trial balance yet. Sync this company's accounts first." />;
+  return (
+    <AccountTable
+      list={list}
+      fileName={`${connection.companyName}-trial-balance`.replace(/[^\w-]+/g, '-').toLowerCase()}
+      emptyMessage="No trial balance yet. Sync this company's accounts first."
+    />
+  );
 }
 
 export default function TrialBalance() {

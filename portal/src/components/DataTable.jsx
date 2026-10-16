@@ -1,18 +1,21 @@
 import ErrorBanner from './ErrorBanner';
 import Pagination from './Pagination';
 
-export default function DataTable({ columns, list, renderRow, emptyMessage, onPage }) {
+export default function DataTable({ columns, columnClasses = [], list, renderRow, emptyMessage, onPage, className = '' }) {
   const { status, items, pagination, error, reload } = list;
   const firstLoad = status === 'loading' && items.length === 0;
+  const busy = status === 'loading' && !firstLoad;
 
   return (
     <div>
       {status === 'error' && <ErrorBanner error={error} onRetry={reload} />}
-      <table className={status === 'loading' && !firstLoad ? 'is-loading' : ''} aria-busy={status === 'loading'}>
+      <table className={[className, busy ? 'is-loading' : ''].join(' ').trim()} aria-busy={status === 'loading'}>
         <thead>
           <tr>
             {columns.map((c, i) => (
-              <th key={i}>{c}</th>
+              <th key={i} scope="col" className={columnClasses[i] || undefined}>
+                {c}
+              </th>
             ))}
           </tr>
         </thead>

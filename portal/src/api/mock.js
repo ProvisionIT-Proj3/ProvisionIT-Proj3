@@ -47,7 +47,7 @@ const payments = invoices
   }));
 
 // a small chart of accounts, scaled per company so each one looks different
-const accountsFor = (k) => [
+const baseAccounts = (k) => [
   { id: 'a0', code: '', name: 'Assets', type: 'Asset', dr_cr: 'Dr', is_header: true, level: 0, value: null },
   { id: 'a1', code: '1000', name: 'Cheque Account', type: 'Bank', dr_cr: 'Dr', is_header: false, level: 1, value: 12450.8 * k },
   { id: 'a2', code: '1100', name: 'Accounts Receivable', type: 'Current Asset', dr_cr: 'Dr', is_header: false, level: 1, value: 4310.25 * k },
@@ -58,6 +58,19 @@ const accountsFor = (k) => [
   { id: 'a7', code: '', name: 'Revenue', type: 'Revenue', dr_cr: 'Cr', is_header: true, level: 0, value: null },
   { id: 'a8', code: '4000', name: 'Sales', type: 'Revenue', dr_cr: 'Cr', is_header: false, level: 1, value: 21800 * k },
 ];
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// the wages row is whatever makes debits equal credits, so the sample trial balance always balances
+const accountsFor = (k) => {
+  const rows = baseAccounts(k).map((a) => (a.value == null ? a : { ...a, value: round2(a.value) }));
+  const sum = (side) => rows.filter((a) => a.dr_cr === side && !a.is_header).reduce((n, a) => n + a.value, 0);
+  return [
+    ...rows,
+    { id: 'a9', code: '', name: 'Expenses', type: 'Expense', dr_cr: 'Dr', is_header: true, level: 0, value: null },
+    { id: 'a10', code: '4400', name: 'Wages and Salaries', type: 'Expense', dr_cr: 'Dr', is_header: false, level: 1, value: round2(sum('Cr') - sum('Dr')) },
+  ];
+};
 
 // the pages the API can't serve yet get a company even when the id is a real one
 const SAMPLE_PAGES = ['/invoices', '/payments', '/customers'];
