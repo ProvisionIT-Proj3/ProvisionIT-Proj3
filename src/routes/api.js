@@ -1,3 +1,6 @@
+// Routes stay thin on purpose: login and permission checks here, the real work
+// in dataService.
+
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
@@ -47,6 +50,8 @@ router.post("/sync", syncAccounting, async (req, res, next) => {
   }
 });
 
+// Live trial balance from the accounting system. Same canonical shape as
+// /accounts, but fetched on each request and not stored.
 router.get("/trial-balance", readAccounting, loadConnectionId, requireConnectionAccess, async (req, res, next) => {
   try {
     res.json(await dataService.getTrialBalance(req.connectionId));

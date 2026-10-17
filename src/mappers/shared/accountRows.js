@@ -1,10 +1,9 @@
 const { toMoney } = require('../../canonical/utils');
 
 /**
- * Shared by the vendor account mappers. Each vendor parses its own
- * TrialBalance report into sections of { accountId, name, debit, credit }
- * rows; from there the canonical header + detail rows are built the same way
- * for every vendor, so a fix here applies to all of them.
+ * Vendor mappers parse their TrialBalance into sections of
+ * { accountId, name, debit, credit } rows. Header and detail rows are built
+ * here so a fix applies to every vendor.
  */
 
 // Plain decimal, or digits grouped in threes ("1,234.50"); a comma anywhere
@@ -13,13 +12,11 @@ const PLAIN_AMOUNT = /^[+-]?(\d+\.?\d*|\.\d+)$/;
 const GROUPED_AMOUNT = /^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/;
 
 /**
- * Parse a report amount. Empty means 0. Tolerates thousands separators, a
- * currency symbol and accounting-style negatives "(50.00)". Throws on anything
- * else (including Infinity, exponents and hex, which Number() would accept)
+ * Parse a report amount; empty means 0. Throws on anything unparseable
+ * (including Infinity, exponents and hex, which Number() would accept)
  * rather than silently reporting a wrong balance.
- *
  * @param {*} raw - the cell's value
- * @param {string} vendorLabel - used in the error message, e.g. 'QuickBooks'
+ * @param {string} vendorLabel - used in the error message
  */
 function parseAmount(raw, vendorLabel) {
   if (raw === '' || raw === undefined || raw === null) return 0;
@@ -31,16 +28,16 @@ function parseAmount(raw, vendorLabel) {
   }
 
   let text = String(raw).trim().replace(/[$\s]/g, '');
-  if (/^\(.*\)$/.test(text)) text = `-${text.slice(1, -1)}`;
+  if (/^\(.*\)$/.test(text)) text = `-${text.slice(1, -1)}`; // accounting negative "(50.00)"
 
   if (!PLAIN_AMOUNT.test(text) && !GROUPED_AMOUNT.test(text)) throw fail();
   return Number(text.replace(/,/g, ''));
 }
 
 /**
- * Net a debit/credit pair into a normal-balance side and a positive value, so
- * negative cells and rows with both sides populated resolve correctly.
- * fallbackDrCr is used when the pair nets to zero.
+ * Net a debit/credit pair into a side and a positive value, so negative cells
+ * and rows with both sides populated resolve correctly. fallbackDrCr applies
+ * when the pair nets to zero.
  */
 function netBalance(debit, credit, fallbackDrCr) {
   const net = toMoney(debit - credit); // rounded first so float noise can't pick a side
@@ -51,10 +48,8 @@ function netBalance(debit, credit, fallbackDrCr) {
 }
 
 /**
- * The accounts table is keyed on (connection, id), so one repeated id would
- * fail the whole sync. Repeats (two sections with the same title, two
- * unmatched rows with the same name, an account listed twice) get a "#n"
- * suffix instead.
+ * The accounts table is keyed on (connection, id), so a repeated id would fail
+ * the whole sync. Repeats get a "#n" suffix instead.
  */
 function ensureUniqueIds(rows) {
   const seen = new Map();
@@ -72,69 +67,83 @@ function ensureUniqueIds(rows) {
   });
 }
 
+/** Map raw vendor accounts to dimension data, indexed by dimension id. */
+function indexDimensionsById(rawAccounts, mapDimension) {
+  return new Map(
+    (rawAccounts || []).map((raw) => {
+      const dimension = mapDimension(raw);
+      return [dimension.id, dimension];
+    })
+  );
+}
+
 const sumOf = (rows, field) => rows.reduce((sum, r) => sum + r[field], 0);
 
+function buildHeaderRow(section, sectionIndex, sourceSystem) {
+  const title = section.title || `Section ${sectionIndex}`;
+  const debit = section.summary?.debit ?? sumOf(section.rows, 'debit');
+  const credit = section.summary?.credit ?? sumOf(section.rows, 'credit');
+  // No fallback: a section netting to zero has no meaningful side.
+  const { drCr, value } = netBalance(debit, credit, undefined);
+
+  return {
+    id: `header:${title}`,
+    sourceSystem,
+    code: `HDR-${sectionIndex}`,
+    name: title,
+    type: title,
+    drCr,
+    isHeader: true,
+    level: 1,
+    value,
+    taxCode: undefined,
+    _vendorSpecific: { sectionRowCount: section.rows.length, synthesizedCode: true },
+  };
+}
+
+function buildDetailRow(row, dimension, { sourceSystem, fallbackDrCr, vendorSpecific }) {
+  const { drCr, value } = netBalance(row.debit, row.credit, fallbackDrCr(dimension));
+
+  return {
+    id: row.accountId || `unmatched:${row.name}`,
+    sourceSystem,
+    code: dimension.code,
+    name: dimension.name || row.name || row.accountId,
+    type: dimension.type,
+    drCr,
+    isHeader: false,
+    level: 2,
+    value,
+    taxCode: dimension.taxCode,
+    _vendorSpecific: {
+      ...vendorSpecific(dimension),
+      matchedToAccountsList: Boolean(dimension.id),
+    },
+  };
+}
+
 /**
- * Build canonical Account rows — a header per section, then its detail rows —
- * from parsed report sections plus the vendor's account dimension data.
+ * Build canonical Account rows: a header per section, then its details.
  *
  * @param {object} opts
  * @param {string} opts.sourceSystem - 'xero' | 'quickbooks'
  * @param {Array<{ title: string, rows: Array, summary: { debit: number, credit: number } | null }>} opts.sections
- * @param {Map<string, object>} opts.dimensionById - mapped dimension data keyed by vendor account id
- * @param {(dimension: object) => string|undefined} opts.fallbackDrCr - normal side for a zero-balance account
+ * @param {Map<string, object>} opts.dimensionById - dimension data by vendor account id
+ * @param {(dimension: object) => string|undefined} opts.fallbackDrCr - side for a zero-balance account
  * @param {(dimension: object) => object} opts.vendorSpecific - extra _vendorSpecific fields for a detail row
  * @returns {object[]} canonical Account rows in report order
  */
 function buildAccountRows({ sourceSystem, sections, dimensionById, fallbackDrCr, vendorSpecific }) {
-  const result = [];
+  const detailOptions = { sourceSystem, fallbackDrCr, vendorSpecific };
 
-  sections.forEach((section, i) => {
-    const sectionIndex = i + 1;
-    const title = section.title || `Section ${sectionIndex}`;
-    const debit = section.summary?.debit ?? sumOf(section.rows, 'debit');
-    const credit = section.summary?.credit ?? sumOf(section.rows, 'credit');
-    // A section that nets to zero has no meaningful side, so drCr is left empty.
-    const header = netBalance(debit, credit, undefined);
+  const rows = sections.flatMap((section, i) => [
+    buildHeaderRow(section, i + 1, sourceSystem),
+    ...section.rows.map((row) =>
+      buildDetailRow(row, dimensionById.get(row.accountId) || {}, detailOptions)
+    ),
+  ]);
 
-    result.push({
-      id: `header:${title}`,
-      sourceSystem,
-      code: `HDR-${sectionIndex}`,
-      name: title,
-      type: title,
-      drCr: header.drCr,
-      isHeader: true,
-      level: 1,
-      value: header.value,
-      taxCode: undefined,
-      _vendorSpecific: { sectionRowCount: section.rows.length, synthesizedCode: true },
-    });
-
-    for (const row of section.rows) {
-      const dimension = dimensionById.get(row.accountId) || {};
-      const { drCr, value } = netBalance(row.debit, row.credit, fallbackDrCr(dimension));
-
-      result.push({
-        id: row.accountId || `unmatched:${row.name}`,
-        sourceSystem,
-        code: dimension.code,
-        name: dimension.name || row.name || row.accountId,
-        type: dimension.type,
-        drCr,
-        isHeader: false,
-        level: 2,
-        value,
-        taxCode: dimension.taxCode,
-        _vendorSpecific: {
-          ...vendorSpecific(dimension),
-          matchedToAccountsList: Boolean(dimension.id),
-        },
-      });
-    }
-  });
-
-  return ensureUniqueIds(result);
+  return ensureUniqueIds(rows);
 }
 
-module.exports = { parseAmount, netBalance, ensureUniqueIds, buildAccountRows };
+module.exports = { parseAmount, netBalance, ensureUniqueIds, indexDimensionsById, buildAccountRows };

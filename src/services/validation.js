@@ -1,6 +1,5 @@
-// Request validation shared by the routes and the service layer.
-// All failures are 400s with a stable error code, so the portal gets a clear
-// message instead of a 500 from the database.
+// Checks shared by the routes and the service layer. Bad input is always a 400
+// with a code, so the portal gets a readable message instead of a database 500.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
