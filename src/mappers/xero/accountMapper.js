@@ -75,7 +75,7 @@ function cellAccountId(cell) {
 
 /** Locate the balance columns: YTD pair, else plain Debit/Credit, else the fixed order. */
 function resolveBalanceColumns(report) {
-  const header = (report.Rows || []).find((r) => r.RowType === 'Header');
+  const header = (report.Rows || []).find((r) => r?.RowType === 'Header');
   const titles = (header?.Cells || []).map((c) => String(c.Value ?? '').trim().toLowerCase());
   const find = (title) => {
     const i = titles.indexOf(title);

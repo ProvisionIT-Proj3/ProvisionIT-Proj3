@@ -212,7 +212,7 @@ test("the title-less grand-total section never becomes a header, in either vendo
 });
 
 test("hostile input never crashes the parsers with anything but the deliberate amount error", () => {
-  const junk = [undefined, null, {}, { Rows: null }, { Rows: { Row: null } }, { Rows: { Row: [null] } }, { Reports: [] }, { Reports: [{}] }, { Reports: [{ Rows: [{}] }] }];
+  const junk = [undefined, null, {}, { Rows: null }, { Rows: { Row: null } }, { Rows: { Row: [null] } }, { Reports: [] }, { Reports: [{}] }, { Reports: [{ Rows: [{}] }] }, { Reports: [{ Rows: [null] }] }, { Reports: [{ Rows: [null, { RowType: "Header", Cells: [] }] }] }];
   for (const input of junk) {
     for (const parse of [quickbooks.parseTrialBalanceReport, xero.parseTrialBalanceReport]) {
       let result;

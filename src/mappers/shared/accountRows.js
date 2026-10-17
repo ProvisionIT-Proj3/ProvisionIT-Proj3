@@ -30,7 +30,9 @@ function parseAmount(raw, vendorLabel) {
   if (/^\(.*\)$/.test(text)) text = `-${text.slice(1, -1)}`; // accounting negative "(50.00)"
 
   if (!PLAIN_AMOUNT.test(text) && !GROUPED_AMOUNT.test(text)) throw fail();
-  return Number(text.replace(/,/g, ''));
+  const amount = Number(text.replace(/,/g, ''));
+  if (!Number.isFinite(amount)) throw fail(); // a string of 309+ digits overflows to Infinity
+  return amount;
 }
 
 /**

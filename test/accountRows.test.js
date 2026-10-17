@@ -38,6 +38,7 @@ test("parseAmount throws on anything that is not a plain amount", () => {
     "1.234,50", "1,23", "1,2345.00", ",5", // comma not used as a thousands separator
     "12.5%", "50.00-", "−50.00", // trailing/other minus signs are not guessed at
     NaN, Infinity, -Infinity,
+    "9".repeat(400), `-${"9".repeat(400)}`, // plain digits that overflow to Infinity
   ];
   for (const raw of bad) {
     assert.throws(() => parseAmount(raw, "Acme"), /Unparseable Acme report amount/, String(raw));
