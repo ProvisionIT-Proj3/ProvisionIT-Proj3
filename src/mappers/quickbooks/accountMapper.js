@@ -11,8 +11,7 @@ const { parseAmount, indexDimensionsById, buildAccountRows } = require('../share
 
 const COLUMN_INDEX = { ACCOUNT: 0, DEBIT: 1, CREDIT: 2 };
 
-// "TOTAL", "Total Assets", "Total: Revenue" ... but not an account that merely
-// starts with the letters, like "Totalizer Fees".
+// Matches "Total Assets" but not an account like "Totalizer Fees".
 const TOTAL_LINE_LABEL = /^\s*total\b/i;
 
 // Fallback side for zero-balance accounts, so drCr is still populated.
@@ -95,19 +94,16 @@ function parseAccountRow(row) {
   };
 }
 
-// A data row is an account unless it is a total line. QuickBooks puts totals
-// in Summary rows, but an id-less row labelled "TOTAL" / "Total ..." would
-// otherwise be counted as an account and double its section's balance.
-// Account rows always carry an id, so a row with an id is never skipped.
+// An id-less "Total ..." row would be counted as an account and double its
+// section's balance. A row with an id is never skipped.
 function toAccountRow(row) {
   const account = parseAccountRow(row);
   const isTotalLine = !account.accountId && TOTAL_LINE_LABEL.test(String(account.name ?? ''));
   return isTotalLine ? null : account;
 }
 
-// Account rows of a section, descending into any nested section so a
-// sub-account grouped under a parent is kept rather than silently dropped.
-// Nested subtotals are ignored; the outer section's own Summary still covers them.
+// Descends into nested sections so sub-accounts aren't dropped; the outer
+// Summary already covers nested subtotals.
 function collectAccountRows(childRows) {
   const rows = [];
   for (const child of childRows || []) {
@@ -167,7 +163,7 @@ function parseTrialBalanceReport(rawReport) {
       const section = parseSection(row);
       if (section) sections.push(section);
     } else if (isDataRow(row)) {
-      // An id-less row is kept (as "unmatched:<name>") so its balance isn't lost, unless it is a total line.
+      // Kept without an id (as "unmatched:<name>") so its balance isn't lost.
       const account = toAccountRow(row);
       if (account) flatRows.push(account);
     }

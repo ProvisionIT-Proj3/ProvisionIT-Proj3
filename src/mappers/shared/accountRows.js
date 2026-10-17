@@ -6,15 +6,14 @@ const { toMoney } = require('../../canonical/utils');
  * here so a fix applies to every vendor.
  */
 
-// Plain decimal, or digits grouped in threes ("1,234.50"); a comma anywhere
-// else (e.g. European "1.234,50") is rejected rather than misread.
+// Plain decimals or comma-grouped thousands; European "1.234,50" is rejected, not misread.
 const PLAIN_AMOUNT = /^[+-]?(\d+\.?\d*|\.\d+)$/;
 const GROUPED_AMOUNT = /^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/;
 
 /**
  * Parse a report amount; empty means 0. Throws on anything unparseable
- * (including Infinity, exponents and hex, which Number() would accept)
- * rather than silently reporting a wrong balance.
+ * (Number() would accept Infinity, exponents and hex) rather than silently
+ * reporting a wrong balance.
  * @param {*} raw - the cell's value
  * @param {string} vendorLabel - used in the error message
  */

@@ -199,9 +199,7 @@ async function saveAccounts(connectionId, accounts, reportDate = null) {
     await client.query('BEGIN');
     await client.query(`DELETE FROM accounts WHERE connection_id = $1`, [connectionId]);
 
-    // Postgres allows at most 65,535 parameters per statement, so a large chart
-    // of accounts (12 parameters a row) is inserted in chunks, all inside the
-    // same transaction.
+    // One INSERT is capped at 65,535 parameters, so insert in chunks within the same transaction.
     const COLS = 12;
     const CHUNK_ROWS = 1000;
     for (let start = 0; start < accounts.length; start += CHUNK_ROWS) {
@@ -218,7 +216,7 @@ async function saveAccounts(connectionId, accounts, reportDate = null) {
           a.level,
           a.value ?? null,
           a.taxCode ?? null,
-          start + j + 1, // sort_order follows position in the whole report, not the chunk
+          start + j + 1, // position in the whole report, not the chunk
           reportDate
         );
         const base = j * COLS;
