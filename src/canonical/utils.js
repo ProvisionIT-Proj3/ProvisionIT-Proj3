@@ -1,9 +1,6 @@
-/**
- * Small normalization helpers shared across vendor mappers, so date/number
- * handling is consistent regardless of source platform quirks.
- */
+/** Normalization helpers shared by the vendor mappers. */
 
-/** Round to 2 decimal places and return a Number (avoids float string drift). */
+/** Round to 2 decimal places as a Number; undefined for empty or non-numeric input. */
 function toMoney(value) {
   if (value === undefined || value === null || value === '') return undefined;
   const n = Number(value);
@@ -11,10 +8,11 @@ function toMoney(value) {
   return Math.round(n * 100) / 100;
 }
 
-/** Normalize any timestamp-ish input to a UTC ISO 8601 string. */
+/** Normalize a timestamp to UTC ISO 8601; undefined if it can't be parsed. */
 function toUtcTimestamp(value) {
   if (!value) return undefined;
 
+  // Xero's legacy "/Date(ms+offset)/" format isn't understood by Date().
   const msDateMatch = typeof value === 'string' && value.match(/\/Date\((\d+)([+-]\d+)?\)\//);
   if (msDateMatch) {
     return new Date(Number(msDateMatch[1])).toISOString();

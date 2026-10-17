@@ -5,8 +5,6 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "demo": "node runDemo.js",
-    "accounts-report": "node buildXeroAccountsReport.js",
     "test": "node --experimental-test-module-mocks --test \"test/**/*.test.js\""
     },
   "keywords": [],
