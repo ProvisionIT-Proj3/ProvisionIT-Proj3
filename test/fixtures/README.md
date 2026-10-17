@@ -11,6 +11,7 @@ samples don't.
 | File | Source |
 |---|---|
 | `xero/trial_balance.official.json` | **Official.** The `GET /Reports/TrialBalance` example from Xero's OpenAPI spec ([XeroAPI/Xero-OpenAPI](https://github.com/XeroAPI/Xero-OpenAPI), `xero_accounting.yaml`), converted from YAML to JSON. |
+| `xero/tax_types.json` | **Official.** The `TaxType` enum from the same spec (123 values, most for other countries), used to check the tax type mapping table for typos. |
 | `xero/accounts.json` | **Constructed.** A `GET /Accounts` response for the 19 accounts in the official trial balance. AccountID, Name and Code come from the report rows; Type and Class follow the report section; TaxType is illustrative (AU types). |
 
 What the official sample shows:

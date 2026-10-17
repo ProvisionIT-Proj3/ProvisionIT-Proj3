@@ -32,6 +32,8 @@ const XERO_TAX_TYPE_TO_CLIENT_CODE = {
   EXEMPTOUTPUT: 'FRE',
   EXEMPTINPUT: 'FRE',
   EXEMPTEXPORT: 'FRE',
+  EXEMPTCAPITAL: 'FRE',
+  EXEMPTEXPENSES: 'FRE',
   GSTONCAPIMPORTS: 'GCA',
   CAPEXINPUT: 'GCA',
   CAPEXOUTPUT: 'GCA',
@@ -73,7 +75,7 @@ function cellAccountId(cell) {
 
 /** Locate the balance columns: YTD pair, else plain Debit/Credit, else the fixed order. */
 function resolveBalanceColumns(report) {
-  const header = (report.Rows || []).find((r) => r.RowType === 'Header');
+  const header = (report.Rows || []).find((r) => r?.RowType === 'Header');
   const titles = (header?.Cells || []).map((c) => String(c.Value ?? '').trim().toLowerCase());
   const find = (title) => {
     const i = titles.indexOf(title);
@@ -108,6 +110,7 @@ function parseSection(section, columns) {
   let summary = null;
 
   for (const sectionRow of section.Rows || []) {
+    if (!sectionRow) continue;
     const cells = sectionRow.Cells || [];
 
     if (sectionRow.RowType === 'Row') {
@@ -135,7 +138,7 @@ function parseTrialBalanceReport(rawReport) {
   const columns = resolveBalanceColumns(report);
 
   return (report.Rows || [])
-    .filter((row) => row.RowType === 'Section') // drops the column-header Row
+    .filter((row) => row?.RowType === 'Section') // drops the column-header Row
     .map((section) => parseSection(section, columns))
     .filter(Boolean);
 }
@@ -176,5 +179,6 @@ module.exports = {
   buildXeroAccounts,
   getXeroReportDate,
   mapXeroTaxCode,
+  XERO_TAX_TYPE_TO_CLIENT_CODE,
   DR_CR_BY_CLASS,
 };

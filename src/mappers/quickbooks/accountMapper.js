@@ -11,6 +11,9 @@ const { parseAmount, indexDimensionsById, buildAccountRows } = require('../share
 
 const COLUMN_INDEX = { ACCOUNT: 0, DEBIT: 1, CREDIT: 2 };
 
+// Matches "Total Assets" but not an account like "Totalizer Fees".
+const TOTAL_LINE_LABEL = /^\s*total\b/i;
+
 // Fallback side for zero-balance accounts, so drCr is still populated.
 const DR_CR_BY_CLASSIFICATION = {
   Asset: 'Dr',
@@ -91,6 +94,30 @@ function parseAccountRow(row) {
   };
 }
 
+// An id-less "Total ..." row would be counted as an account and double its
+// section's balance. A row with an id is never skipped.
+function toAccountRow(row) {
+  const account = parseAccountRow(row);
+  const isTotalLine = !account.accountId && TOTAL_LINE_LABEL.test(String(account.name ?? ''));
+  return isTotalLine ? null : account;
+}
+
+// Descends into nested sections so sub-accounts aren't dropped; the outer
+// Summary already covers nested subtotals.
+function collectAccountRows(childRows) {
+  const rows = [];
+  for (const child of childRows || []) {
+    if (!child) continue;
+    if (child.type === 'Section') {
+      rows.push(...collectAccountRows(child.Rows?.Row));
+    } else if (isDataRow(child)) {
+      const account = toAccountRow(child);
+      if (account) rows.push(account);
+    }
+  }
+  return rows;
+}
+
 function parseSummary(summaryCells) {
   if (!summaryCells) return null;
 
@@ -107,7 +134,7 @@ function parseSection(section) {
 
   return {
     title,
-    rows: (section.Rows?.Row || []).filter(isDataRow).map(parseAccountRow),
+    rows: collectAccountRows(section.Rows?.Row),
     summary: parseSummary(section.Summary?.ColData),
   };
 }
@@ -130,13 +157,15 @@ function parseTrialBalanceReport(rawReport) {
   };
 
   for (const row of rawReport?.Rows?.Row || []) {
+    if (!row) continue;
     if (row.type === 'Section') {
       flushFlatRows();
       const section = parseSection(row);
       if (section) sections.push(section);
     } else if (isDataRow(row)) {
-      const account = parseAccountRow(row);
-      if (account.accountId) flatRows.push(account);
+      // Kept without an id (as "unmatched:<name>") so its balance isn't lost.
+      const account = toAccountRow(row);
+      if (account) flatRows.push(account);
     }
   }
 
@@ -179,5 +208,6 @@ module.exports = {
   buildQuickbooksAccounts,
   getQuickbooksReportDate,
   mapQuickbooksTaxCode,
+  QBO_TAX_CODE_NAME_TO_CLIENT_CODE,
   DR_CR_BY_CLASSIFICATION,
 };

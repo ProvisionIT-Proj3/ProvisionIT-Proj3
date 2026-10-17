@@ -230,6 +230,59 @@ test("repeated ids get a #n suffix so one sync can't hit the unique (connection,
   assert.deepEqual(ids, ["header:Revenue", "unmatched:Mystery", "unmatched:Mystery#2", "header:Revenue#2"]);
 });
 
+test("a flat row with no account id is kept as an unmatched row, not dropped", () => {
+  const report = {
+    Rows: {
+      Row: [
+        { type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "500.00" }, { value: "" }] },
+        { type: "Data", ColData: [{ value: "Mystery" }, { value: "" }, { value: "500.00" }] },
+      ],
+    },
+  };
+  const [, checking, mystery] = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+
+  assert.equal(mystery.id, "unmatched:Mystery");
+  assert.equal(mystery.name, "Mystery");
+  assert.equal(mystery.drCr, "Cr");
+  assert.equal(mystery.value, 500);
+  assert.equal(mystery._vendorSpecific.matchedToAccountsList, false);
+  assert.equal(checking.value, 500); // the report still balances
+});
+
+test("an id-less total line is not counted as an account, flat or nested", () => {
+  const totals = [
+    { type: "Data", ColData: [{ value: "TOTAL" }, { value: "500.00" }, { value: "500.00" }] },
+    { type: "Data", ColData: [{ value: "Total Assets" }, { value: "500.00" }, { value: "" }] },
+    { type: "Data", ColData: [{ value: "  total: revenue" }, { value: "" }, { value: "500.00" }] },
+  ];
+  const checking = { type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "500.00" }, { value: "" }] };
+
+  const flat = buildQuickbooksAccounts(RAW_ACCOUNTS, { Rows: { Row: [checking, ...totals] } });
+  assert.deepEqual(flat.map((a) => a.name), ["Accounts", "Checking"]);
+  assert.equal(flat[0].value, 500); // not inflated by the total lines
+
+  const nested = buildQuickbooksAccounts(RAW_ACCOUNTS, {
+    Rows: { Row: [{ type: "Section", Header: { ColData: [{ value: "Assets" }] }, Rows: { Row: [checking, ...totals] } }] },
+  });
+  assert.deepEqual(nested.map((a) => a.name), ["Assets", "Checking"]);
+});
+
+test("the total-line guard never drops a row that has an id, or an account that merely starts with 'Total'", () => {
+  const report = {
+    Rows: {
+      Row: [
+        // Has an id, so it is an account even though it is named like a total.
+        { type: "Data", ColData: [{ value: "Total Loss Reserve", id: "50" }, { value: "10.00" }, { value: "" }] },
+        // Starts with the letters but is a different word.
+        { type: "Data", ColData: [{ value: "Totalizer Fees" }, { value: "5.00" }, { value: "" }] },
+      ],
+    },
+  };
+  const names = buildQuickbooksAccounts([], report).filter((a) => !a.isHeader).map((a) => a.name);
+
+  assert.deepEqual(names, ["Total Loss Reserve", "Totalizer Fees"]);
+});
+
 test("getQuickbooksReportDate reads Header.EndPeriod", () => {
   assert.equal(getQuickbooksReportDate({ Header: { EndPeriod: "2026-06-30" } }), "2026-06-30");
   assert.equal(getQuickbooksReportDate({ Header: {} }), null);
