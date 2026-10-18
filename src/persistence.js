@@ -14,6 +14,14 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL, // Supabase connection string, kept in .env — never hardcoded
 });
 
+// A bounded audit pool prevents a logging outage from exhausting business connections.
+const auditPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 2,
+  connectionTimeoutMillis: 2000,
+  query_timeout: 2000,
+});
+
 // A shared client prevents partial OAuth records when any persistence step fails.
 async function withTransaction(fn) {
   const client = await pool.connect();
@@ -264,6 +272,63 @@ async function getActivityLog(connectionId, limit = 50) {
   return result.rows;
 }
 
+// Security audit writes use a strict event shape prepared by auditLogger.
+// No update or delete operation is exposed so application code cannot rewrite history.
+async function writeAuditEvent({
+  auditId,
+  occurredAt,
+  actorUserId,
+  connectionId,
+  provider,
+  action,
+  outcome,
+  errorCode,
+  requestId,
+  metadata,
+}) {
+  const result = await auditPool.query(
+    `INSERT INTO security_audit_log
+       (audit_id, occurred_at, actor_user_id, connection_id, provider, action,
+        outcome, error_code, request_id, metadata)
+     VALUES (COALESCE($10::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (audit_id) DO NOTHING
+     RETURNING audit_id, occurred_at`,
+    [
+      occurredAt,
+      actorUserId,
+      connectionId,
+      provider,
+      action,
+      outcome,
+      errorCode,
+      requestId,
+      metadata,
+      auditId,
+    ]
+  );
+  return result.rows[0];
+}
+
+async function writeAuditEvents(events) {
+  if (!events.length) return [];
+  const result = await auditPool.query(
+    `INSERT INTO security_audit_log
+       (audit_id, occurred_at, actor_user_id, connection_id, provider, action,
+        outcome, error_code, request_id, metadata)
+     SELECT "auditId", "occurredAt", "actorUserId", "connectionId", provider,
+            action, outcome, "errorCode", "requestId", metadata
+     FROM jsonb_to_recordset($1::jsonb) AS event(
+       "auditId" uuid, "occurredAt" timestamptz, "actorUserId" uuid,
+       "connectionId" uuid, provider text, action text, outcome text,
+       "errorCode" text, "requestId" text, metadata jsonb)
+     WHERE true
+     ON CONFLICT (audit_id) DO NOTHING
+     RETURNING audit_id, occurred_at`,
+    [JSON.stringify(events)],
+  );
+  return result.rows;
+}
+
 const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hasUserConnectionAccess(userId, connectionId, client = pool) {
@@ -323,4 +388,6 @@ module.exports = {
   getUserRole, setUserRole,
   getAccountsByConnection, saveAccounts,
   logActivity, getActivityLog,
+  writeAuditEvent,
+  writeAuditEvents,
 };

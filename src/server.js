@@ -12,8 +12,26 @@ if (errors.length) {
 }
 
 const app = require("./app");
+const { waitForAuditWrites } = require("./security/auditLogger");
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Middleware API listening on port ${port}`);
 });
+
+let stopping = false;
+function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  // Give completed requests time to persist their audit batches before a redeploy.
+  const deadline = setTimeout(() => process.exit(1), 10_000);
+  deadline.unref();
+  server.close(async () => {
+    await waitForAuditWrites();
+    clearTimeout(deadline);
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

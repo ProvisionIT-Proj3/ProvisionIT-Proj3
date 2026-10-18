@@ -11,11 +11,12 @@ const createQuickBooksRouter = require("./providers/quickbooks/router");
 const { getXeroConfig, assertXeroConfigured } = require("./providers/xero/config");
 const XeroProvider = require("./providers/xero/provider");
 const createXeroRouter = require("./providers/xero/router");
+const { createAuditLogger } = require("../security/auditLogger");
 const { authenticate, requirePermission } = require("../middleware/auth");
+const persistence = require("../persistence");
 
 function createConnectionStore(provider) {
   if (!process.env.DATABASE_URL) return new TestMemoryConnectionStore({ provider });
-  const persistence = require("../persistence");
   return new DatabaseConnectionStore({
     provider,
     persistence: new ConnectionPersistenceAdapter(persistence),
@@ -23,12 +24,16 @@ function createConnectionStore(provider) {
 }
 
 const stateStore = new OAuthStateStore();
+const auditLogger = process.env.DATABASE_URL
+  ? createAuditLogger({ persistence })
+  : null;
 const xeroConfig = getXeroConfig();
 const xeroProvider = new XeroProvider(xeroConfig);
 const xeroOAuth = new OAuthService({
   provider: xeroProvider,
   stateStore,
   connectionStore: createConnectionStore(xeroProvider.id),
+  auditLogger,
 });
 
 const quickBooksConfig = getQuickBooksConfig();
@@ -37,6 +42,7 @@ const quickBooksOAuth = new OAuthService({
   provider: quickBooksProvider,
   stateStore,
   connectionStore: createConnectionStore(quickBooksProvider.id),
+  auditLogger,
 });
 
 const registry = new ProviderRegistry()

@@ -79,8 +79,14 @@ use, it must log in as the `postgres` role. Put the Supabase project in the regi
 The API and the portal need each other's address, so the order matters.
 
 1. **Database.** Back up first. Apply the migrations in `db/migrations/` in order (`001`, `002`,
-   `003_enable_rls.sql`, `004`, `005`; read the comment at the top of 003 before running it) to the target
+   `003_enable_rls.sql`, `004`, `005`, `006_create_security_audit_log.sql`,
+   `007_protect_security_audit_log.sql`; read the comment at the top of 003 before running it) to the target
    Supabase project. Compare the migration history with staging, do not eyeball it.
+   Migration 006 creates the audit table and enables RLS in the same transaction.
+   Keep 007 for older review environments that created the table without RLS.
+   If a review build already applied `003_create_security_audit_log.sql` or
+   `006_protect_security_audit_log.sql`, record their new names in your migration history.
+   The renamed SQL is safe to run again; do not drop the existing audit table or its records.
 2. **Deploy the API on Railway** with all variables except `CORS_ORIGINS`. Wait for the healthcheck.
    Open `https://<api-domain>/health`. Note the API address.
 3. **Deploy the portal on Vercel** with `VITE_API_URL` pointing at the API. Note the portal address.
@@ -131,6 +137,11 @@ Check the real workflow, not just that the build went green.
       JSON, that is expected.
 - [ ] In the portal: the company appears, Sync works, Accounts and Trial balance show data
 - [ ] Railway logs contain no tokens, secrets or full connection strings (NFR-02 spot check on real logs)
+- [ ] After an authenticated request, check `security_audit_log` for its authentication and
+      authorization events. They are written together after the response finishes.
+- [ ] Monitor Railway logs for `AUDIT_WRITE_FAILED`. A write gets one retry with the same
+      event IDs, so a lost database reply cannot create duplicates. Persistent failure logs
+      a safe warning and does not change the API response. Investigate warnings immediately.
 - [ ] Anon key cannot read tables directly:
       `curl "$SUPABASE_URL/rest/v1/connections?select=*" -H "apikey: $SUPABASE_ANON_KEY"` returns `[]` or an error, never rows
 
@@ -152,4 +163,10 @@ Check the real workflow, not just that the build went green.
 - Login is email and password only. There is no sign-up page, users are created in Supabase.
 - The Xero callback returns JSON instead of sending the admin back to the portal.
 - OAuth `state` is in memory, so one API instance only.
+- Audit logging is best-effort, not a durable queue. API request events are batched into one
+  background INSERT after the response (or connection close), using a separate pool of at most
+  two connections with two-second connection/query timeouts. One retry is attempted.
+  OAuth lifecycle events still await their writes. Normal SIGTERM/SIGINT shutdown waits for
+  pending audit writes, with a ten-second overall shutdown limit. A hard crash or prolonged
+  database outage can still lose events; do not treat this as guaranteed compliance logging.
 - "Last synced" times can show the wrong hour on a laptop that is not on UTC (a separate small fix).
