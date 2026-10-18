@@ -82,6 +82,8 @@ The API and the portal need each other's address, so the order matters.
    `003_enable_rls.sql`, `004`, `005`, `006_create_security_audit_log.sql`,
    `007_protect_security_audit_log.sql`; read the comment at the top of 003 before running it) to the target
    Supabase project. Compare the migration history with staging, do not eyeball it.
+   Migration 006 creates the audit table and enables RLS in the same transaction.
+   Keep 007 for older review environments that created the table without RLS.
    If a review build already applied `003_create_security_audit_log.sql` or
    `006_protect_security_audit_log.sql`, record their new names in your migration history.
    The renamed SQL is safe to run again; do not drop the existing audit table or its records.

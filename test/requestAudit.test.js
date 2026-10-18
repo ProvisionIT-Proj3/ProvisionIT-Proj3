@@ -68,3 +68,61 @@ test("batch errors are reported without unhandled rejection or private details",
   assert.equal(warning.mock.callCount(), 1);
   assert.doesNotMatch(JSON.stringify(warning.mock.calls), /password|secret/);
 });
+
+test("sync audit records the query target for both allowed and denied requests", async () => {
+  const connectionId = "22222222-2222-4222-8222-222222222222";
+  for (const role of ["admin", "user"]) {
+    const batches = [];
+    const access = createAccessControl({
+      env: { AUTH_REQUIRED: "true" },
+      getRole: async () => role,
+      supabaseClient: { auth: { getUser: async () => ({
+        data: { user: { id: "11111111-1111-4111-8111-111111111111" } }, error: null,
+      }) } },
+      auditLogger: createAuditLogger({ persistence: {
+        async writeAuditEvent() { assert.fail("expected a batch"); },
+        async writeAuditEvents(events) { batches.push(events); },
+      } }),
+    });
+    const res = new EventEmitter();
+    const req = {
+      res, method: "POST", path: "/sync", query: { connectionId },
+      get: (name) => name === "authorization" ? "Bearer test-token" : "request-1",
+    };
+    const run = (middleware) => new Promise((resolve) => middleware(req, res, resolve));
+    assert.equal(await run(access.authenticate), undefined);
+    const error = await run(access.requirePermission("accounting:sync"));
+    if (role === "admin") assert.equal(error, undefined);
+    else assert.equal(error.status, 403);
+
+    res.emit("finish");
+    await waitForAuditWrites();
+    assert.equal(batches.length, 1);
+    assert.equal(batches[0].length, 2);
+    assert.equal(batches[0][1].action, role === "admin" ? "authorization.granted" : "authorization.denied");
+    for (const event of batches[0]) assert.equal(event.connectionId, connectionId);
+  }
+});
+
+test("audit query IDs reject arrays and prefer an existing validated connection ID", async () => {
+  const first = "11111111-1111-4111-8111-111111111111";
+  const second = "22222222-2222-4222-8222-222222222222";
+  for (const [fields, expected] of [
+    [{ query: { connectionId: [first, second] } }, null],
+    [{ query: { connectionId: { value: first } } }, null],
+    [{ query: { connectionId: "invalid-uuid" } }, null],
+    [{ connectionId: first, query: { connectionId: second } }, first],
+    [{ params: { connectionId: first }, query: { connectionId: second } }, first],
+  ]) {
+    const events = [];
+    const access = createAccessControl({
+      env: { AUTH_REQUIRED: "true" },
+      auditLogger: createAuditLogger({ persistence: {
+        async writeAuditEvent(event) { events.push(event); },
+      } }),
+    });
+    const req = { ...fields, user: { id: first, role: "admin" }, get: () => undefined };
+    await new Promise((resolve) => access.requirePermission("accounting:sync")(req, {}, resolve));
+    assert.equal(events[0].connectionId, expected);
+  }
+});

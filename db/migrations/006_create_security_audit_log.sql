@@ -2,7 +2,10 @@
 -- inserts rows; no update or delete helpers are exposed by the persistence API.
 -- Runs after main's 003_enable_rls.sql and the access-control migrations.
 
-CREATE TABLE IF NOT EXISTS security_audit_log (
+-- Commit the table and its access protection together so there is no exposure window.
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.security_audit_log (
   audit_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   occurred_at    timestamp with time zone NOT NULL DEFAULT now(),
   actor_user_id  uuid,
@@ -16,11 +19,15 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
   metadata       jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
+ALTER TABLE public.security_audit_log ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS security_audit_log_occurred_at_idx
-  ON security_audit_log (occurred_at DESC);
+  ON public.security_audit_log (occurred_at DESC);
 
 CREATE INDEX IF NOT EXISTS security_audit_log_actor_user_id_idx
-  ON security_audit_log (actor_user_id, occurred_at DESC);
+  ON public.security_audit_log (actor_user_id, occurred_at DESC);
 
 CREATE INDEX IF NOT EXISTS security_audit_log_connection_id_idx
-  ON security_audit_log (connection_id, occurred_at DESC);
+  ON public.security_audit_log (connection_id, occurred_at DESC);
+
+COMMIT;

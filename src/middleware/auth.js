@@ -89,7 +89,8 @@ function getRequestId(req) {
 }
 
 function getRequestConnectionId(req) {
-  return req.connectionId || req.params?.connectionId || null;
+  const connectionId = req.connectionId || req.params?.connectionId || req.query?.connectionId;
+  return typeof connectionId === "string" ? connectionId : null;
 }
 
 function createAccessControl({
