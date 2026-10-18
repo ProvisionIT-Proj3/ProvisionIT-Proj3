@@ -30,9 +30,6 @@ Apply the SQL files in `db/migrations/` to your database in filename order
 `.env.example` lists every setting. The API checks the required ones on startup and stops
 with a clear message if one is missing or invalid (`src/config/checkEnv.js`).
 
-Other scripts: `npm run accounts-report` builds the client's account report (JSON and CSV)
-from the Xero sample data in `sample_data/` and writes it to `output/`.
-
 `npm test` runs the backend tests. Three of them (`persistenceDates`,
 `persistenceTransaction`, `userConnectionAccess`) use the real `DATABASE_URL`
 and write temporary rows, so point it at a development database.
