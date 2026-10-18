@@ -199,10 +199,12 @@ async function saveAccounts(connectionId, accounts, reportDate = null) {
     await client.query('BEGIN');
     await client.query(`DELETE FROM accounts WHERE connection_id = $1`, [connectionId]);
 
-    if (accounts.length > 0) {
-      const COLS = 12;
+    // One INSERT is capped at 65,535 parameters, so insert in chunks within the same transaction.
+    const COLS = 12;
+    const CHUNK_ROWS = 1000;
+    for (let start = 0; start < accounts.length; start += CHUNK_ROWS) {
       const params = [];
-      const rows = accounts.map((a, i) => {
+      const rows = accounts.slice(start, start + CHUNK_ROWS).map((a, j) => {
         params.push(
           connectionId,
           a.id,
@@ -214,10 +216,10 @@ async function saveAccounts(connectionId, accounts, reportDate = null) {
           a.level,
           a.value ?? null,
           a.taxCode ?? null,
-          i + 1,
+          start + j + 1, // position in the whole report, not the chunk
           reportDate
         );
-        const base = i * COLS;
+        const base = j * COLS;
         return `(${Array.from({ length: COLS }, (_, c) => `$${base + c + 1}`).join(', ')})`;
       });
 
