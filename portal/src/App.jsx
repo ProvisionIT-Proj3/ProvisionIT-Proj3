@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
 import { ConnectionProvider } from './ConnectionContext';
@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import Accounts from './pages/Accounts';
 import Connections from './pages/Connections';
 import Customers from './pages/Customers';
+import Dashboard from './pages/Dashboard';
 import Invoices from './pages/Invoices';
 import Login from './pages/Login';
 import Payments from './pages/Payments';
@@ -29,7 +30,7 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route element={<Protected />}>
           <Route element={<Layout />}>
-            <Route index element={<Navigate to="/connections" replace />} />
+            <Route index element={<Dashboard />} />
             <Route path="connections" element={<Connections />} />
             <Route path="accounts" element={<Accounts />} />
             <Route path="trial-balance" element={<TrialBalance />} />

@@ -2,14 +2,27 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useConnection } from '../ConnectionContext';
 import { PLATFORM_LABELS } from '../constants';
+import Icon from './Icon';
 
-const links = [
-  ['/connections', 'Connections'],
-  ['/accounts', 'Accounts'],
-  ['/trial-balance', 'Trial balance'],
-  ['/invoices', 'Invoices'],
-  ['/payments', 'Payments'],
-  ['/customers', 'Customers'],
+// group name, then [path, label, icon]
+const groups = [
+  ['Overview', [['/', 'Dashboard', 'grid']]],
+  [
+    'Manage',
+    [
+      ['/connections', 'Connections', 'link'],
+      ['/accounts', 'Accounts', 'list'],
+      ['/trial-balance', 'Trial balance', 'chart'],
+    ],
+  ],
+  [
+    'Records',
+    [
+      ['/invoices', 'Invoices', 'file'],
+      ['/payments', 'Payments', 'card'],
+      ['/customers', 'Customers', 'users'],
+    ],
+  ],
 ];
 
 export default function Layout() {
@@ -23,12 +36,36 @@ export default function Layout() {
           ProvisionIT<span>Admin Portal</span>
         </div>
         <nav>
-          {links.map(([to, label]) => (
-            <NavLink key={to} to={to} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              {label}
-            </NavLink>
+          {groups.map(([group, links]) => (
+            <div key={group}>
+              <div className="nav-label">{group}</div>
+              {links.map(([to, label, icon]) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
+                >
+                  <Icon name={icon} />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
+        {status === 'in' && (
+          <div className="side-user">
+            <div className="who-row">
+              <span className="avatar" aria-hidden="true">
+                {(user?.email ?? '?').slice(0, 2).toUpperCase()}
+              </span>
+              <span className="who">{user?.email}</span>
+            </div>
+            <button className="btn ghost sm" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        )}
       </aside>
       <div className="main">
         <header className="topbar">
@@ -48,14 +85,6 @@ export default function Layout() {
               {!connections.length && <option value="">No companies</option>}
             </select>
           </label>
-          {status === 'in' && (
-            <div className="user-box">
-              <span>{user?.email}</span>
-              <button className="btn ghost sm" onClick={signOut}>
-                Sign out
-              </button>
-            </div>
-          )}
         </header>
         {/* key remounts the page so filters and paging reset when the company changes */}
         <main className="content" key={active?.id ?? 'none'}>
