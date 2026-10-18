@@ -1,3 +1,6 @@
+const { randomUUID } = require("node:crypto");
+
+const pendingWrites = new Set();
 const ALLOWED_OUTCOMES = new Set(["success", "failure", "denied"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_METADATA_FIELDS = new Set([
@@ -30,7 +33,7 @@ function cleanUuid(value) {
 }
 
 function reportWriteFailure() {
-  console.warn("Security audit event could not be saved.");
+  console.warn("[audit] AUDIT_WRITE_FAILED: security audit events could not be saved after retry.");
 }
 
 function sanitizeMetadata(metadata) {
@@ -71,22 +74,53 @@ function createAuditLogger({ persistence, clock = () => new Date(), onWriteFailu
     throw new TypeError("Audit logger requires persistence.writeAuditEvent(event).");
   }
 
-  async function record(event) {
-    const occurredAt = clock();
-    const normalized = normalizeEvent(
-      event,
-      occurredAt instanceof Date ? occurredAt.toISOString() : occurredAt,
-    );
-    try {
-      await persistence.writeAuditEvent(normalized);
-      return true;
-    } catch {
-      onWriteFailure();
-      return false;
+  async function writeBatch(events) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        if (typeof persistence.writeAuditEvents === "function") {
+          await persistence.writeAuditEvents(events);
+        } else {
+          for (const event of events) await persistence.writeAuditEvent(event);
+        }
+        return true;
+      } catch {
+        // Reuse event IDs because the database may have committed before a lost reply.
+      }
     }
+    try {
+      onWriteFailure({ code: "AUDIT_WRITE_FAILED", eventCount: events.length, attempts: 2 });
+    } catch {
+      reportWriteFailure();
+    }
+    return false;
   }
 
-  return { record };
+  function recordMany(events) {
+    const normalized = events.map((event) => {
+      const occurredAt = clock();
+      return {
+        ...normalizeEvent(event, occurredAt instanceof Date ? occurredAt.toISOString() : occurredAt),
+        auditId: randomUUID(),
+      };
+    });
+    if (!normalized.length) return Promise.resolve(true);
+    const pending = writeBatch(normalized);
+    pendingWrites.add(pending);
+    pending.finally(() => pendingWrites.delete(pending));
+    return pending;
+  }
+
+  async function record(event) {
+    return recordMany([event]);
+  }
+
+  return { record, recordMany };
+}
+
+async function waitForAuditWrites() {
+  // Response finish handlers schedule their writes in the next microtask.
+  await Promise.resolve();
+  while (pendingWrites.size) await Promise.allSettled([...pendingWrites]);
 }
 
 module.exports = {
@@ -94,4 +128,5 @@ module.exports = {
   createAuditLogger,
   normalizeEvent,
   sanitizeMetadata,
+  waitForAuditWrites,
 };

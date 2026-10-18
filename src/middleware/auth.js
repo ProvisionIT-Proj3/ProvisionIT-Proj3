@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const persistence = require("../persistence");
 const { createAuditLogger } = require("../security/auditLogger");
+const { createRequestAuditRecorder } = require("../security/requestAudit");
 
 const rolePermissions = Object.freeze({
   admin: Object.freeze([
@@ -108,22 +109,18 @@ function createAccessControl({
   }
 
   let client = supabaseClient;
+  const recordRequestAudit = createRequestAuditRecorder(auditLogger);
   const getClient = () => {
     client ||= clientFactory();
     return client;
   };
 
   async function recordAudit(req, event) {
-    if (!auditLogger) return;
-    try {
-      await auditLogger.record({
-        requestId: getRequestId(req),
-        connectionId: getRequestConnectionId(req),
-        ...event,
-      });
-    } catch {
-      // Authorization must fail or succeed based on policy, not audit storage health.
-    }
+    return recordRequestAudit(req, req.res || {}, {
+      requestId: getRequestId(req),
+      connectionId: getRequestConnectionId(req),
+      ...event,
+    });
   }
 
   async function verifyAccessToken(token) {

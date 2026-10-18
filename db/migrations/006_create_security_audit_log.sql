@@ -1,6 +1,6 @@
 -- Immutable-style security and access audit events. Application code only
 -- inserts rows; no update or delete helpers are exposed by the persistence API.
--- Numbered 003 because the OAuth persistence fix owns migration 002.
+-- Runs after main's 003_enable_rls.sql and the access-control migrations.
 
 CREATE TABLE IF NOT EXISTS security_audit_log (
   audit_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),

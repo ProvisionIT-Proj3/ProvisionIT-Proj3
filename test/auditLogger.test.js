@@ -4,6 +4,7 @@ const {
   createAuditLogger,
   sanitizeMetadata,
   normalizeEvent,
+  waitForAuditWrites,
 } = require("../src/security/auditLogger");
 
 test("audit logger writes only approved fields and safe metadata", async () => {
@@ -34,7 +35,9 @@ test("audit logger writes only approved fields and safe metadata", async () => {
     },
   }), true);
 
-  assert.deepEqual(events, [{
+  assert.match(events[0].auditId, /^[0-9a-f-]{36}$/);
+  const { auditId, ...storedEvent } = events[0];
+  assert.deepEqual([storedEvent], [{
     occurredAt: "2026-10-12T01:02:03.000Z",
     actorUserId: "11111111-1111-4111-8111-111111111111",
     connectionId: "22222222-2222-4222-8222-222222222222",
@@ -97,4 +100,62 @@ test("default audit failure warning contains no database details", async (t) => 
   assert.equal(await logger.record({ action: "oauth.failed", outcome: "failure" }), false);
   assert.equal(warning.mock.callCount(), 1);
   assert.doesNotMatch(JSON.stringify(warning.mock.calls), /password|secret/);
+});
+
+test("a committed batch with a lost reply is retried without duplicate events", async () => {
+  const stored = new Map();
+  const attempts = [];
+  const logger = createAuditLogger({ persistence: {
+    async writeAuditEvent() {},
+    async writeAuditEvents(events) {
+      attempts.push(events.map((event) => event.auditId));
+      for (const event of events) stored.set(event.auditId, event);
+      if (attempts.length === 1) throw new Error("reply lost after commit");
+    },
+  } });
+  assert.equal(await logger.recordMany([
+    { action: "authentication.succeeded", outcome: "success" },
+    { action: "authorization.granted", outcome: "success" },
+  ]), true);
+  assert.equal(stored.size, 2);
+  assert.equal(attempts.length, 2);
+  assert.deepEqual(attempts[0], attempts[1]);
+});
+
+test("persistent failure retries once and exposes only safe monitoring fields", async () => {
+  let attempts = 0;
+  const failures = [];
+  const logger = createAuditLogger({
+    persistence: { async writeAuditEvent() { attempts += 1; throw new Error("password=secret"); } },
+    onWriteFailure: (failure) => failures.push(failure),
+  });
+  assert.equal(await logger.record({ action: "oauth.failed", outcome: "failure" }), false);
+  assert.equal(attempts, 2);
+  assert.deepEqual(failures, [{ code: "AUDIT_WRITE_FAILED", eventCount: 1, attempts: 2 }]);
+});
+
+test("a broken monitoring callback does not break the business operation", async (t) => {
+  const warning = t.mock.method(console, "warn", () => {});
+  const logger = createAuditLogger({
+    persistence: { async writeAuditEvent() { throw new Error("private database error"); } },
+    onWriteFailure: () => { throw new Error("private monitoring error"); },
+  });
+  assert.equal(await logger.record({ action: "oauth.failed", outcome: "failure" }), false);
+  assert.equal(warning.mock.callCount(), 1);
+  assert.doesNotMatch(JSON.stringify(warning.mock.calls), /private/);
+});
+
+test("shutdown drain waits for pending audit writes", async () => {
+  let finishWrite;
+  const logger = createAuditLogger({ persistence: {
+    writeAuditEvent: () => new Promise((resolve) => { finishWrite = resolve; }),
+  } });
+  const write = logger.record({ action: "oauth.completed", outcome: "success" });
+  let drained = false;
+  const drain = waitForAuditWrites().then(() => { drained = true; });
+  await Promise.resolve();
+  assert.equal(drained, false);
+  finishWrite();
+  await drain;
+  assert.equal(await write, true);
 });
