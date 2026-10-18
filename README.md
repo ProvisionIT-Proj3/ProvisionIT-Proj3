@@ -23,7 +23,36 @@ npm start                # http://localhost:3000
 npm test
 ```
 
-Create the accounts table once (see `db/migrations/001_create_accounts.sql`).
+Apply the SQL files in `db/migrations/` to your database in filename order
+(001 accounts, 002 OAuth persistence, 003 row level security, 004 user profiles,
+005 user connection access).
+
+`.env.example` lists every setting. The API checks the required ones on startup and stops
+with a clear message if one is missing or invalid (`src/config/checkEnv.js`).
+
+Other scripts: `npm run accounts-report` builds the client's account report (JSON and CSV)
+from the Xero sample data in `sample_data/` and writes it to `output/`.
+
+`npm test` runs the backend tests. Three of them (`persistenceDates`,
+`persistenceTransaction`, `userConnectionAccess`) use the real `DATABASE_URL`
+and write temporary rows, so point it at a development database.
+
+## Project layout
+
+```
+src/routes/          the HTTP routes under /api/v1
+src/services/        dataService (sync and read), canonicalMapper, validation
+src/connector/       one connector per platform (xero, quickbooks) behind connectorFactory
+src/mappers/         turn each platform's raw data into the canonical account shape
+src/auth/            OAuth for Xero and QuickBooks, encrypted token storage
+src/middleware/      login and role checks (auth.js) and CORS (cors.js)
+src/config/          startup check of the required settings
+src/canonical/       the canonical account shape and its helpers
+src/persistence.js   all database access
+portal/              the admin portal (see portal/README.md)
+db/migrations/       SQL for the database, applied in order
+test/                backend tests
+```
 
 ## Endpoints (`/api/v1`)
 
@@ -32,6 +61,7 @@ Create the accounts table once (see `db/migrations/001_create_accounts.sql`).
 | GET | `/accounts?connectionId=<uuid>&page=1&pageSize=100` | Stored accounts in report order |
 | POST | `/sync?connectionId=<uuid>` | Fetch from the accounting system and replace the stored snapshot |
 | GET | `/trial-balance?connectionId=<uuid>` | Live trial balance, same canonical list as `/accounts` (fetched from the accounting system, not stored) |
+| GET | `/connections` | Connected companies for the portal (display fields only, no tokens). A `user` sees only their assigned connections |
 
 `GET /accounts` returns:
 
@@ -93,4 +123,11 @@ so users cannot discover another company's connection ID.
 | 500 | `AUTH_CONFIGURATION_ERROR` | auth is on but the Supabase settings are missing |
 
 All of the token checking is in `src/middleware/auth.js`. If the login system
-changes, only `verifyToken()` there needs replacing.
+changes, only `verifyAccessToken()` there (inside `createAccessControl`) needs replacing.
+
+## Deployed
+
+`GET /health` returns `{ "status": "ok" }` with no login, for the host's health check.
+Browsers may only call the API from the addresses in `CORS_ORIGINS`.
+Hosting (Supabase, Railway, Vercel), every setting and the rollback steps are in
+[DEPLOY.md](DEPLOY.md).
