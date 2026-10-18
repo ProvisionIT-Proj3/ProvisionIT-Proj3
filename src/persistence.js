@@ -262,6 +262,40 @@ async function getActivityLog(connectionId, limit = 50) {
   return result.rows;
 }
 
+// Security audit writes use a strict event shape prepared by auditLogger.
+// No update or delete operation is exposed so application code cannot rewrite history.
+async function writeAuditEvent({
+  occurredAt,
+  actorUserId,
+  connectionId,
+  provider,
+  action,
+  outcome,
+  errorCode,
+  requestId,
+  metadata,
+}) {
+  const result = await pool.query(
+    `INSERT INTO security_audit_log
+       (occurred_at, actor_user_id, connection_id, provider, action,
+        outcome, error_code, request_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING audit_id, occurred_at`,
+    [
+      occurredAt,
+      actorUserId,
+      connectionId,
+      provider,
+      action,
+      outcome,
+      errorCode,
+      requestId,
+      metadata,
+    ]
+  );
+  return result.rows[0];
+}
+
 const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hasUserConnectionAccess(userId, connectionId, client = pool) {
@@ -321,4 +355,5 @@ module.exports = {
   getUserRole, setUserRole,
   getAccountsByConnection, saveAccounts,
   logActivity, getActivityLog,
+  writeAuditEvent,
 };

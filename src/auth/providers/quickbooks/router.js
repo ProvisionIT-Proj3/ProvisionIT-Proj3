@@ -47,7 +47,7 @@ function createQuickBooksRouter({ service, assertConfigured, authenticate, requi
   router.delete("/quickbooks/connections/:connectionId", authenticate, manageConnections, async (req, res, next) => {
     try {
       assertConfigured();
-      await service.disconnect(req.params.connectionId);
+      await service.disconnect(req.params.connectionId, { actorUserId: req.user?.id });
       res.status(204).end();
     } catch (error) {
       next(error);

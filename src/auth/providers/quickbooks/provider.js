@@ -1,4 +1,5 @@
 const { createHttpError } = require("../../core/errors");
+const { buildRelativeApiUrl } = require("../../core/urlValidation");
 
 async function readJson(response, code, message) {
   const body = await response.json().catch(() => ({}));
@@ -87,20 +88,11 @@ class QuickBooksProvider {
   }
 
   buildApiUrl(path, connection) {
-    if (
-      typeof path !== "string"
-      || !path
-      || /^[a-z][a-z\d+.-]*:/i.test(path)
-      || path.startsWith("//")
-      || /(^|\/)\.\.(\/|$)/.test(path)
-    ) {
-      throw createHttpError("QuickBooks API requests require a relative path.", 400, "INVALID_QUICKBOOKS_API_PATH");
-    }
     if (!connection?.providerAccountId) {
       throw createHttpError("QuickBooks connection has no realm ID.", 500, "QUICKBOOKS_REALM_ID_MISSING");
     }
     const companyBase = new URL(`${encodeURIComponent(connection.providerAccountId)}/`, this.config.apiBaseUrl);
-    return new URL(path.replace(/^\/+/, ""), companyBase).toString();
+    return buildRelativeApiUrl(path, companyBase, "QuickBooks", "INVALID_QUICKBOOKS_API_PATH");
   }
 
   async disconnect(connection, fetchImpl) {

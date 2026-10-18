@@ -1,4 +1,5 @@
 const { createHttpError } = require("../../core/errors");
+const { buildRelativeApiUrl } = require("../../core/urlValidation");
 
 async function readResponse(response, code, message) {
   const body = await response.json().catch(() => ({}));
@@ -78,16 +79,7 @@ class XeroProvider {
   }
 
   buildApiUrl(path) {
-    if (
-      typeof path !== "string"
-      || !path
-      || /^[a-z][a-z\d+.-]*:/i.test(path)
-      || path.startsWith("//")
-      || /(^|\/)\.\.(\/|$)/.test(path)
-    ) {
-      throw createHttpError("Xero API requests require a relative path.", 400, "INVALID_XERO_API_PATH");
-    }
-    return new URL(path.replace(/^\/+/, ""), this.config.apiBaseUrl).toString();
+    return buildRelativeApiUrl(path, this.config.apiBaseUrl, "Xero", "INVALID_XERO_API_PATH");
   }
 
   async disconnect(connection, fetchImpl) {

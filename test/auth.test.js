@@ -149,12 +149,14 @@ test("roles enforce the agreed permission matrix and unknown roles fail closed",
     assert.equal(await runMiddleware(access.requirePermission(permission), admin), undefined);
   }
 
-  const unknownRole = await runMiddleware(
-    access.requirePermission("accounting:read"),
-    { user: { id: "unknown-1", role: "staff" } },
-  );
-  assert.equal(unknownRole.status, 403);
-  assert.equal(unknownRole.code, "INSUFFICIENT_PERMISSION");
+  for (const role of ["staff", "constructor", "toString", "__proto__"]) {
+    const unknownRole = await runMiddleware(
+      access.requirePermission("accounting:read"),
+      { user: { id: "unknown-1", role } },
+    );
+    assert.equal(unknownRole.status, 403);
+    assert.equal(unknownRole.code, "INSUFFICIENT_PERMISSION");
+  }
 });
 
 test("an authenticated user without a profile receives USER_PROFILE_REQUIRED", async () => {
@@ -243,6 +245,7 @@ test("OAuth management requires admin access while callbacks remain available", 
     },
   });
   const authorizationMetadata = [];
+  const disconnectMetadata = [];
   const service = {
     getAuthorizationUrl(metadata) {
       authorizationMetadata.push(metadata);
@@ -254,7 +257,9 @@ test("OAuth management requires admin access while callbacks remain available", 
     async listConnections() {
       return [];
     },
-    async disconnect() {},
+    async disconnect(connectionId, metadata) {
+      disconnectMetadata.push({ connectionId, ...metadata });
+    },
   };
   const dependencies = {
     service,
@@ -293,6 +298,10 @@ test("OAuth management requires admin access while callbacks remain available", 
   assert.deepEqual(authorizationMetadata, [
     { actorUserId: "admin-1" },
     { actorUserId: "admin-1" },
+  ]);
+  assert.deepEqual(disconnectMetadata, [
+    { connectionId: "id", actorUserId: "admin-1" },
+    { connectionId: "id", actorUserId: "admin-1" },
   ]);
 });
 
