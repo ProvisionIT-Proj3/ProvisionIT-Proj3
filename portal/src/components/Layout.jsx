@@ -15,14 +15,6 @@ const groups = [
       ['/trial-balance', 'Trial balance', 'chart'],
     ],
   ],
-  [
-    'Records',
-    [
-      ['/invoices', 'Invoices', 'file'],
-      ['/payments', 'Payments', 'card'],
-      ['/customers', 'Customers', 'users'],
-    ],
-  ],
 ];
 
 export default function Layout() {
