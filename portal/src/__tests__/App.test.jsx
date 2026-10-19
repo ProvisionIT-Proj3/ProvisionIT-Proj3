@@ -31,29 +31,18 @@ describe('whole portal on sample data', () => {
     await user.click(screen.getByRole('link', { name: 'Trial balance' }));
     expect(await screen.findByRole('heading', { name: 'Trial balance' })).toBeInTheDocument();
     expect(await screen.findByText('Accounts Receivable')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('link', { name: 'Invoices' }));
-    expect(await screen.findByRole('heading', { name: 'Invoices' })).toBeInTheDocument();
-    expect(await screen.findByText('INV-1100')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('link', { name: 'Payments' }));
-    expect(await screen.findByRole('heading', { name: 'Payments' })).toBeInTheDocument();
-    expect(await screen.findByText('PAY-1100')).toBeInTheDocument();
   });
 
-  it('pages through invoices and filters by status', async () => {
-    const user = userEvent.setup();
+  it('has no invoices, payments or customers pages', async () => {
     render(
-      <MemoryRouter initialEntries={['/invoices']}>
+      <MemoryRouter initialEntries={['/connections']}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Showing 1–10 of 12')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('Showing 11–12 of 12')).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText('Status'), 'paid');
-    expect(await screen.findByText('Showing 1–3 of 3')).toBeInTheDocument();
+    await screen.findByText('Plumb Co', { selector: 'td' });
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Payments' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Customers' })).not.toBeInTheDocument();
   });
 });

@@ -35,9 +35,9 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 | `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
 
-Invoices, Payments and Customers have no API route yet. Those three pages always run on sample data
-and show a yellow "Sample data" banner, so nobody mistakes them for live numbers. When a route is
-added, take its path out of `SAMPLE_ONLY` in `src/api/sample.js`.
+Invoices, Payments and Customers are not in the portal because the API has no routes for them yet.
+Their page code was removed. The helpers for them are still in `src/api` (`listInvoices`, `listPayments`,
+`listCustomers` and the sample data), ready for when the routes exist.
 
 Errors are read from `{ error: { code, message } }`.
 
