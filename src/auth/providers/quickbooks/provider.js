@@ -1,15 +1,6 @@
 const { createHttpError } = require("../../core/errors");
+const { readProviderResponse } = require("../../core/providerResponse");
 const { buildRelativeApiUrl } = require("../../core/urlValidation");
-
-async function readJson(response, code, message) {
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw createHttpError(message, 502, code, {
-      oauthError: typeof body.error === "string" ? body.error : null,
-    });
-  }
-  return body;
-}
 
 class QuickBooksProvider {
   constructor(config) {
@@ -43,7 +34,7 @@ class QuickBooksProvider {
       },
       body: new URLSearchParams(parameters),
     });
-    return readJson(response, "QUICKBOOKS_TOKEN_EXCHANGE_FAILED", "QuickBooks rejected the OAuth request.");
+    return readProviderResponse(response, "QUICKBOOKS_TOKEN_EXCHANGE_FAILED", "QuickBooks rejected the OAuth request.");
   }
 
   exchangeAuthorizationCode(code, fetchImpl) {
@@ -68,7 +59,7 @@ class QuickBooksProvider {
         ...this.getAuthorizationHeaders({ accessToken: tokens.access_token }),
       },
     });
-    const body = await readJson(
+    const body = await readProviderResponse(
       response,
       "QUICKBOOKS_COMPANY_INFO_FAILED",
       "QuickBooks company information could not be loaded.",

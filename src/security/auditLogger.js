@@ -28,7 +28,7 @@ function cleanMetadataValue(value) {
 }
 
 function cleanUuid(value) {
-  // An invalid request ID must not prevent a denied request from being audited.
+  // Invalid user or connection IDs must not prevent a denied request from being audited.
   return typeof value === "string" && uuidPattern.test(value) ? value : null;
 }
 
