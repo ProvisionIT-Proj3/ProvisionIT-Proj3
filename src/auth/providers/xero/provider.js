@@ -1,15 +1,6 @@
 const { createHttpError } = require("../../core/errors");
+const { readProviderResponse } = require("../../core/providerResponse");
 const { buildRelativeApiUrl } = require("../../core/urlValidation");
-
-async function readResponse(response, code, message) {
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw createHttpError(message, 502, code, {
-      oauthError: typeof body.error === "string" ? body.error : null,
-    });
-  }
-  return body;
-}
 
 class XeroProvider {
   constructor(config) {
@@ -39,7 +30,7 @@ class XeroProvider {
       },
       body: new URLSearchParams(parameters),
     });
-    return readResponse(response, "XERO_TOKEN_EXCHANGE_FAILED", "Xero rejected the OAuth request.");
+    return readProviderResponse(response, "XERO_TOKEN_EXCHANGE_FAILED", "Xero rejected the OAuth request.");
   }
 
   exchangeAuthorizationCode(code, fetchImpl) {
@@ -58,7 +49,7 @@ class XeroProvider {
     const response = await fetchImpl(this.config.connectionsUrl, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
-    const tenants = await readResponse(response, "XERO_CONNECTIONS_FAILED", "Xero rejected the connections request.");
+    const tenants = await readProviderResponse(response, "XERO_CONNECTIONS_FAILED", "Xero rejected the connections request.");
     if (!Array.isArray(tenants)) return [];
     return tenants.map((tenant) => ({
       externalConnectionId: tenant.id || tenant.tenantId,

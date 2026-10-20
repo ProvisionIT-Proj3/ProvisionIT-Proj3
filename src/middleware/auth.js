@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { createHttpError } = require("../auth/core/errors");
 const persistence = require("../persistence");
 const { createAuditLogger } = require("../security/auditLogger");
 const { createRequestAuditRecorder } = require("../security/requestAudit");
@@ -14,10 +15,7 @@ const rolePermissions = Object.freeze({
 });
 
 function httpError(status, code, message) {
-  const error = new Error(message);
-  error.status = status;
-  error.code = code;
-  return error;
+  return createHttpError(message, status, code);
 }
 
 function isAuthRequired(env = process.env) {
