@@ -1,5 +1,8 @@
 const { quickBooksRequest } = require("./quickBooksClient");
 
+// QuickBooks limits account queries to 1000 records per response.
+// Retrieving additional pages prevents larger Charts of Accounts
+// from being returned with missing records.
 const PAGE_SIZE = 1000;
 
 async function getAccounts(connectionId) {
@@ -16,6 +19,8 @@ async function getAccounts(connectionId) {
       `query?query=${query}`
     );
 
+    // Invalid responses must not be mistaken for empty account lists.
+    // Otherwise missing financial data could go unnoticed.
     if (!data?.QueryResponse) {
       throw new Error("Invalid QuickBooks Accounts response.");
     }
@@ -28,6 +33,7 @@ async function getAccounts(connectionId) {
 
     accounts.push(...page);
 
+    // A shorter page means there are no further records to retrieve.
     if (page.length < PAGE_SIZE) {
       break;
     }

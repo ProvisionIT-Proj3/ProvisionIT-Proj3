@@ -2,23 +2,21 @@ const { getAccounts: getRawAccounts } = require("./accounts");
 const { getTrialBalance } = require("./trialBalance");
 const { buildXeroAccounts, getXeroReportDate } = require("../../mappers/xero/accountMapper");
 
-// Canonical accounts can't come from a single Xero call: dimension data
-// (Code, Name, Type, Class, TaxType) comes from GET /Accounts, balances
-// and section hierarchy come from GET /Reports/TrialBalance. Fetch both
-// raw responses and let buildXeroAccounts() combine + map them so this
-// connector's accounts match the canonical ACCOUNT_SCHEMA like every
-// other connector behind connectorFactory.
+// Xero provides account details and financial balances through separate APIs.
+// The Accounts response contains account information, while the Trial Balance
+// provides balances and reporting sections.
+// Both requests are independent, so they can run together before mapping.
 //
-// options: { endDate } for the TrialBalance report.
+// The endDate option determines the reporting date for the Trial Balance.
 async function getAccountsReport(connectionId, options = {}) {
   const [rawAccounts, trialBalanceReport] = await Promise.all([
     getRawAccounts(connectionId),
     getTrialBalance(connectionId, options),
   ]);
 
-  // getTrialBalance() already unwraps Reports/TrialBalance down to the
-  // single report object; the mapper expects the raw { Reports: [...] }
-  // envelope, so put it back.
+  // The Trial Balance client returns a single report object.
+  // The canonical mapper expects the original Reports array structure,
+  // so we restore that structure before passing the data to the mapper.
   const rawReport = { Reports: trialBalanceReport ? [trialBalanceReport] : [] };
 
   return {
@@ -27,6 +25,8 @@ async function getAccountsReport(connectionId, options = {}) {
   };
 }
 
+// This method provides canonical accounts to callers that do not
+// require the additional reporting date information.
 async function getAccounts(connectionId, options = {}) {
   const { accounts } = await getAccountsReport(connectionId, options);
   return accounts;

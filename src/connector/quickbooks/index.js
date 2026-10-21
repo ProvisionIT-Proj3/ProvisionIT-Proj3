@@ -6,14 +6,10 @@ const {
   getQuickbooksReportDate,
 } = require("../../mappers/quickbooks/accountMapper");
 
-// Mirrors the Xero connector: dimension data (Name, AccountType,
-// Classification, TaxCodeRef) comes from the Account query, balances and
-// section hierarchy from the TrialBalance report, tax code names from the
-// TaxCode query. buildQuickbooksAccounts() combines + maps them so this
-// connector's accounts match the canonical ACCOUNT_SCHEMA like every other
-// connector behind connectorFactory.
-//
-// options: { startDate, endDate, accountingMethod } for the TrialBalance report.
+// The Accounts API provides account details, while the Trial Balance
+// provides balances for the requested reporting period.
+// Tax codes are retrieved separately to support consistent mapping.
+// These requests can run together because they do not depend on each other.
 async function getAccountsReport(connectionId, options = {}) {
   const [rawAccounts, trialBalanceReport, rawTaxCodes] = await Promise.all([
     getRawAccounts(connectionId),
@@ -21,12 +17,15 @@ async function getAccountsReport(connectionId, options = {}) {
     getTaxCodes(connectionId),
   ]);
 
+  // Preserve the report date so consumers can identify the period
+  // associated with the mapped account balances.
   return {
     accounts: buildQuickbooksAccounts(rawAccounts, trialBalanceReport, rawTaxCodes),
     reportDate: getQuickbooksReportDate(trialBalanceReport),
   };
 }
 
+// Some callers only need the canonical accounts without report metadata.
 async function getAccounts(connectionId, options = {}) {
   const { accounts } = await getAccountsReport(connectionId, options);
   return accounts;

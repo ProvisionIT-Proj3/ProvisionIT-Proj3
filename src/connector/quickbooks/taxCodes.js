@@ -1,8 +1,9 @@
 const { quickBooksRequest } = require("./quickBooksClient");
 
-// TaxCode ids differ per QBO company, so the mapper resolves an Account's
-// TaxCodeRef to a name through this list. A company has a handful of tax
-// codes, well under one page.
+// QuickBooks tax code identifiers vary between companies.
+// The mapper uses this response to resolve account tax code references
+// into meaningful tax code names.
+// This query requests up to 1000 tax codes and does not paginate.
 async function getTaxCodes(connectionId) {
   const query = encodeURIComponent("select * from TaxCode MAXRESULTS 1000");
 
