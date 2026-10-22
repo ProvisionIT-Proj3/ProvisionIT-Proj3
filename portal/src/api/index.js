@@ -1,4 +1,4 @@
-import { get as httpGet, post as httpPost } from './http';
+import { ApiError, del as httpDel, get as httpGet, post as httpPost } from './http';
 import { mockGet, mockPost } from './mock';
 import { normalizeAccount, normalizeConnection, normalizeCustomer, normalizeInvoice, normalizePayment } from './normalize';
 import { isSample } from './sample';
@@ -47,6 +47,22 @@ export const api = {
   // admin only on the server, pulls fresh accounts from Xero / QuickBooks and stores them
   async syncAccounts(connectionId) {
     return post('/sync', { connectionId });
+  },
+  // admin only on the server, gives the provider's login address and the page jumps there
+  async startConnect(provider) {
+    if (import.meta.env.VITE_USE_MOCK === 'true') {
+      throw new ApiError('Connecting needs the real API, not sample data.', 400, 'SAMPLE_DATA');
+    }
+    const url = (await httpGet(`/auth/${provider}/connect`))?.data?.authorizationUrl;
+    if (!url) throw new ApiError('The API did not send a login address.', 502, 'NO_AUTH_URL');
+    return url;
+  },
+  // admin only on the server, removes the company from the provider and deletes its saved accounts
+  async disconnect(provider, connectionId) {
+    if (import.meta.env.VITE_USE_MOCK === 'true') {
+      throw new ApiError('Disconnecting needs the real API, not sample data.', 400, 'SAMPLE_DATA');
+    }
+    await httpDel(`/auth/${provider}/connections/${encodeURIComponent(connectionId)}`);
   },
   async listInvoices({ connectionId, page, pageSize, status, search }) {
     return toList(await get('/invoices', { connectionId, page, pageSize, status, search }), normalizeInvoice);

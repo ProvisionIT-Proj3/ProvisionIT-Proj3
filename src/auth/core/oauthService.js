@@ -146,8 +146,13 @@ class OAuthService {
 
   async disconnect(connectionId, { actorUserId } = {}) {
     try {
-      const connection = await this.getValidConnection(connectionId);
-      await this.provider.disconnect(connection, this.fetch);
+      const stored = await this.connectionStore.getByConnectionId(connectionId);
+      if (!stored || stored.provider !== this.provider.id) throw this.provider.connectionNotFoundError();
+      // no working token when it needs reauthorizing, so it is only removed from our database
+      if (stored.status !== "reauthorization_required") {
+        const connection = await this.getValidConnection(connectionId);
+        await this.provider.disconnect(connection, this.fetch);
+      }
       await this.connectionStore.deleteByConnectionId(connectionId);
       await this.recordAudit({
         actorUserId,
