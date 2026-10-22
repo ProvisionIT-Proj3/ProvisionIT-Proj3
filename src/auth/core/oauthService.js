@@ -148,10 +148,18 @@ class OAuthService {
     try {
       const stored = await this.connectionStore.getByConnectionId(connectionId);
       if (!stored || stored.provider !== this.provider.id) throw this.provider.connectionNotFoundError();
-      // no working token when it needs reauthorizing, so it is only removed from our database
+      // Unusable credentials must not prevent an admin from removing a local connection.
       if (stored.status !== "reauthorization_required") {
-        const connection = await this.getValidConnection(connectionId);
-        await this.provider.disconnect(connection, this.fetch);
+        let connection = null;
+        try {
+          connection = await this.getValidConnection(connectionId);
+        } catch (error) {
+          const reauthorizationError = this.provider.reauthorizationRequiredError();
+          if (error.status !== reauthorizationError.status || error.code !== reauthorizationError.code) {
+            throw error;
+          }
+        }
+        if (connection) await this.provider.disconnect(connection, this.fetch);
       }
       await this.connectionStore.deleteByConnectionId(connectionId);
       await this.recordAudit({
