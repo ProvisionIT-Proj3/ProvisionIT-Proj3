@@ -62,6 +62,7 @@ test/                backend tests
 | POST | `/sync?connectionId=<uuid>` | Fetch from the accounting system and replace the stored snapshot |
 | GET | `/trial-balance?connectionId=<uuid>` | Live trial balance, same canonical list as `/accounts` (fetched from the accounting system, not stored) |
 | GET | `/connections` | Connected companies for the portal (display fields only, no tokens). A `user` sees only their assigned connections |
+| GET | `/activity?page=1&pageSize=100&all=true` | Admin only. The audit log, newest first. Routine sign-in and permission checks are left out unless `all=true` |
 
 `GET /accounts` returns:
 
@@ -102,7 +103,7 @@ Off by default. Set `AUTH_REQUIRED=true` (plus `SUPABASE_URL` and either
 | Who | Can do |
 |---|---|
 | `user` | Read accounts and trial balance only for assigned connections; list assigned connections |
-| `admin` | the above, plus sync and all connection-management routes |
+| `admin` | the above, plus sync, the activity log and all connection-management routes |
 | OAuth callback | Open to the provider redirect, but protected by single-use OAuth state |
 
 An authenticated admin starts OAuth with `GET /auth/<provider>/connect`. A
