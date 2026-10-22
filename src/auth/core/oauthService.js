@@ -103,6 +103,8 @@ class OAuthService {
           connectionId: connection.connectionId,
           action: "connection.created",
           outcome: "success",
+          // kept here too because the connections row is deleted on disconnect
+          metadata: { companyName: connection.accountName },
         });
       }
       return saved.map(toPublicConnection);
@@ -159,6 +161,7 @@ class OAuthService {
         connectionId,
         action: "connection.disconnected",
         outcome: "success",
+        metadata: { companyName: stored.accountName },
       });
     } catch (disconnectError) {
       await this.recordAudit({

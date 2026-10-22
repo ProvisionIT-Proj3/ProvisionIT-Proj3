@@ -329,6 +329,36 @@ async function writeAuditEvents(events) {
   return result.rows;
 }
 
+// Every API call writes these, so the activity page hides them unless asked.
+const ROUTINE_AUDIT_ACTIONS = [
+  'authentication.succeeded',
+  'authorization.granted',
+  'connection.access.granted',
+  'connection.list.granted',
+];
+
+// Newest first, for the admin activity page. The company name comes from the
+// connections row, or from the event itself once that row has been deleted.
+async function listAuditEvents({ limit, offset, includeRoutine = false }) {
+  const hidden = includeRoutine ? [] : ROUTINE_AUDIT_ACTIONS;
+  const rows = await pool.query(
+    `SELECT a.audit_id, a.occurred_at, a.actor_user_id, a.connection_id, a.provider,
+            a.action, a.outcome, a.error_code,
+            COALESCE(c.company_name, a.metadata->>'companyName') AS company_name
+     FROM security_audit_log a
+     LEFT JOIN connections c ON c.connection_id = a.connection_id
+     WHERE a.action <> ALL($1::text[])
+     ORDER BY a.occurred_at DESC, a.audit_id
+     LIMIT $2 OFFSET $3`,
+    [hidden, limit, offset]
+  );
+  const count = await pool.query(
+    `SELECT count(*)::int AS total FROM security_audit_log a WHERE a.action <> ALL($1::text[])`,
+    [hidden]
+  );
+  return { rows: rows.rows, total: count.rows[0].total };
+}
+
 const accessUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function hasUserConnectionAccess(userId, connectionId, client = pool) {
@@ -390,4 +420,5 @@ module.exports = {
   logActivity, getActivityLog,
   writeAuditEvent,
   writeAuditEvents,
+  listAuditEvents,
 };

@@ -34,6 +34,7 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 | `GET /accounts` | Accounts page | needs `?connectionId=`, takes `page` and `pageSize` |
 | `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
+| `GET /activity` | Activity log page | `page`, `pageSize`, `all=true` adds routine sign-in rows, admin only on the server |
 | `GET /auth/<provider>/connect` | Connect buttons on Connections | admin only, sent with `Accept: application/json` it returns `{ data: { authorizationUrl } }` and the browser goes there |
 | `DELETE /auth/<provider>/connections/<id>` | Disconnect button on Connections | admin only, removes the company and its saved accounts |
 
@@ -48,7 +49,6 @@ Field names (`amount` or `total`, `name` or `displayName`, snake_case or camelCa
 
 ## Not built yet
 
-- Activity log. The API writes an audit log but has no route to read it yet.
 - After an admin approves a company on Xero or QuickBooks the API callback answers with JSON,
   so you come back to the Connections page by hand and press Refresh.
 - Invoices, Payments and Customers on real data (see above).

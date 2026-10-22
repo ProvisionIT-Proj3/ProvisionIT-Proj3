@@ -59,6 +59,31 @@ const accountsFor = (k) => [
   { id: 'a8', code: '4000', name: 'Sales', type: 'Revenue', dr_cr: 'Cr', is_header: false, level: 1, value: 21800 * k },
 ];
 
+// newest first, like the real log
+const activity = [
+  ['sync.completed', 'success', 'Northside Retail', 'xero'],
+  ['sync.completed', 'success', 'Riverbend Cafe', 'xero'],
+  ['sync.failed', 'failure', 'Plumb Co', 'myob', 'XERO_REAUTHORIZATION_REQUIRED'],
+  ['connection.reauthorization_required', 'success', 'Plumb Co', 'myob'],
+  ['token.refreshed', 'success', 'Northside Retail', 'xero'],
+  ['connection.created', 'success', 'Northside Retail', 'xero'],
+  ['oauth.completed', 'success', null, 'xero'],
+  ['oauth.failed', 'failure', null, 'xero', 'INVALID_OAUTH_STATE'],
+  ['connection.disconnected', 'success', 'Old Test Co', 'quickbooks'],
+  ['authorization.denied', 'denied', null, null, 'INSUFFICIENT_PERMISSION'],
+  ['sync.completed', 'success', 'Riverbend Cafe', 'xero'],
+  ['connection.created', 'success', 'Riverbend Cafe', 'xero'],
+].map(([action, outcome, companyName, provider, errorCode = null], i) => ({
+  id: `log${i}`,
+  occurredAt: new Date(Date.UTC(2026, 9, 8, 6, 0) - i * 3.5 * 3600 * 1000).toISOString(),
+  action,
+  outcome,
+  errorCode,
+  provider,
+  companyName,
+  actorUserId: i % 3 === 2 ? null : 'sample-admin-0001',
+}));
+
 // the pages the API can't serve yet get a company even when the id is a real one
 const SAMPLE_PAGES = ['/invoices', '/payments', '/customers'];
 const pickSample = (id) => connections[[...String(id)].reduce((n, ch) => n + ch.charCodeAt(0), 0) % connections.length];
@@ -73,6 +98,14 @@ export async function mockPost(path, params = {}) {
 export async function mockGet(path, params = {}) {
   await wait();
   if (path === '/connections') return { data: connections };
+  if (path === '/activity') {
+    const page = Number(params.page) || 1;
+    const pageSize = Number(params.pageSize) || 20;
+    return {
+      data: activity.slice((page - 1) * pageSize, page * pageSize),
+      pagination: { page, pageSize, totalItems: activity.length, totalPages: Math.max(1, Math.ceil(activity.length / pageSize)) },
+    };
+  }
 
   if (!params.connectionId) throw new ApiError('connectionId is required.', 400, 'INVALID_PARAMETER');
   let company = connections.find((c) => c.connection_id === params.connectionId);
