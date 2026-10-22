@@ -158,7 +158,7 @@ Check the real workflow, not just that the build went green.
 ## 8. Known limits
 
 - Xero (Demo Company) and QuickBooks (Intuit sandbox) have been run end to end. Production OAuth apps are untested, and MYOB has no connector.
-- Connecting a company needs `AUTH_REQUIRED=false`, unless the portal calls the connect route with `Accept: application/json` and attaches its token (see the Access control section of the README).
+- Connecting a company needs `AUTH_REQUIRED=false`, unless the portal calls the connect route with `Accept: application/json` and attaches its token (see the Access control section of the README). The portal's Connect button does this.
 - Invoices, Payments and Customers pages show sample data (the client dropped them from scope).
 - Login is email and password only. There is no sign-up page, users are created in Supabase.
 - The Xero callback returns JSON instead of sending the admin back to the portal.

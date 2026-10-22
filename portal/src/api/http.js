@@ -46,3 +46,4 @@ async function request(method, path, params = {}) {
 export const get = (path, params) => request('GET', path, params);
 // the middleware reads connectionId from the query string, so params go there too
 export const post = (path, params) => request('POST', path, params);
+export const del = (path, params) => request('DELETE', path, params);

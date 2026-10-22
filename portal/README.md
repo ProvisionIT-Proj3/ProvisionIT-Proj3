@@ -34,6 +34,8 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 | `GET /accounts` | Accounts page | needs `?connectionId=`, takes `page` and `pageSize` |
 | `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
+| `GET /auth/<provider>/connect` | Connect buttons on Connections | admin only, sent with `Accept: application/json` it returns `{ data: { authorizationUrl } }` and the browser goes there |
+| `DELETE /auth/<provider>/connections/<id>` | Disconnect button on Connections | admin only, removes the company and its saved accounts |
 
 Invoices, Payments and Customers are not in the portal because the API has no routes for them yet.
 Their page code was removed. The helpers for them are still in `src/api` (`listInvoices`, `listPayments`,
@@ -46,10 +48,9 @@ Field names (`amount` or `total`, `name` or `displayName`, snake_case or camelCa
 
 ## Not built yet
 
-- Login and roles. `setTokenProvider` in `src/api/http.js` is where the Supabase token plugs in,
-  the portal then sends it as `Authorization: Bearer <token>`.
-- Create / disconnect connection, needs write endpoints on the backend first.
-- Dashboard and activity log, they need endpoints that return totals and log rows.
+- Activity log. The API writes an audit log but has no route to read it yet.
+- After an admin approves a company on Xero or QuickBooks the API callback answers with JSON,
+  so you come back to the Connections page by hand and press Refresh.
 - Invoices, Payments and Customers on real data (see above).
 
 ## Deploying
