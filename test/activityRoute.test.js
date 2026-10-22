@@ -14,7 +14,7 @@ const listCalls = [];
 const written = [];
 inject("../src/persistence.js", {
   async getConnectionById(id) {
-    return id === CONN ? { connection_id: CONN, platform: "xero", last_synced_at: null } : null;
+    return id === CONN ? { connection_id: CONN, company_name: "Riverbend Cafe", platform: "xero", last_synced_at: null } : null;
   },
   async saveAccounts(connectionId, accounts) { return { saved: accounts.length }; },
   async listAuditEvents(options) {
@@ -121,7 +121,7 @@ test("a finished sync is written to the audit log", async () => {
   assert.ok(event, "expected a sync.completed event");
   assert.equal(event.outcome, "success");
   assert.equal(event.connectionId, CONN);
-  assert.deepEqual(event.metadata, { method: "POST", path: "/sync" });
+  assert.deepEqual(event.metadata, { method: "POST", path: "/sync", companyName: "Riverbend Cafe" });
 });
 
 test("a failed sync is written to the audit log with its error code", async () => {
@@ -132,4 +132,6 @@ test("a failed sync is written to the audit log with its error code", async () =
   assert.ok(event, "expected a sync.failed event");
   assert.equal(event.outcome, "failure");
   assert.equal(event.errorCode, "CONNECTION_NOT_FOUND");
+  // no such company, so there is no name to save
+  assert.deepEqual(event.metadata, { method: "POST", path: "/sync" });
 });

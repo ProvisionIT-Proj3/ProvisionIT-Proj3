@@ -26,17 +26,21 @@ const auditLogger = process.env.DATABASE_URL && typeof persistence.writeAuditEve
   : null;
 
 // Not awaited, so a slow audit write never holds up the response.
+// The company name is saved too, because the connections row is deleted on disconnect.
 function recordSync(req, connectionId, error) {
   if (!auditLogger) return;
-  auditLogger.record({
-    actorUserId: req.user?.id,
-    connectionId,
-    action: error ? "sync.failed" : "sync.completed",
-    outcome: error ? "failure" : "success",
-    errorCode: error?.code,
-    requestId: req.get("x-request-id"),
-    metadata: { method: "POST", path: "/sync" },
-  }).catch(() => {});
+  persistence.getConnectionById(connectionId)
+    .catch(() => null)
+    .then((connection) => auditLogger.record({
+      actorUserId: req.user?.id,
+      connectionId,
+      action: error ? "sync.failed" : "sync.completed",
+      outcome: error ? "failure" : "success",
+      errorCode: error?.code,
+      requestId: req.get("x-request-id"),
+      metadata: { method: "POST", path: "/sync", companyName: connection?.company_name },
+    }))
+    .catch(() => {});
 }
 
 function getConnectionId(req) {
