@@ -59,3 +59,15 @@ export const normalizeAccount = (r) => ({
   value: num(pick(r, 'value')),
   taxCode: pick(r, 'taxCode', 'tax_code'),
 });
+
+export const normalizeActivity = (r) => ({
+  id: pick(r, 'id', 'auditId', 'audit_id'),
+  occurredAt: pick(r, 'occurredAt', 'occurred_at'),
+  action: pick(r, 'action'),
+  outcome: pick(r, 'outcome'),
+  errorCode: pick(r, 'errorCode', 'error_code'),
+  provider: pick(r, 'provider'),
+  connectionId: pick(r, 'connectionId', 'connection_id'),
+  companyName: pick(r, 'companyName', 'company_name'),
+  actorUserId: pick(r, 'actorUserId', 'actor_user_id'),
+});

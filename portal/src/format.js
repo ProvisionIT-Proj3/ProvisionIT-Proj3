@@ -11,6 +11,13 @@ export function formatDate(value) {
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+export function formatDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
 export function labelFor(value) {
   if (!value) return '—';
   const text = String(value).replace(/_/g, ' ').toLowerCase();
@@ -21,6 +28,9 @@ const TONES = {
   paid: 'good',
   active: 'good',
   completed: 'good',
+  success: 'good',
+  failure: 'bad',
+  denied: 'warn',
   overdue: 'bad',
   failed: 'bad',
   draft: 'warn',
