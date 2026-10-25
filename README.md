@@ -1,6 +1,6 @@
 # ProvisionIT-Proj3
 
-Read-only middleware and REST API over Xero, MYOB and QuickBooks. It turns each
+Read-only middleware and REST API over Xero and QuickBooks (MYOB is planned). It turns each
 platform's data into one canonical format for the admin portal.
 
 ## How accounts flow
@@ -14,6 +14,13 @@ GET  /api/v1/accounts  DB -> canonical mapper -> portal
 
 The trial balance is still fetched live (`GET /api/v1/trial-balance`).
 
+## Required software
+
+- Node.js 22 or newer and npm
+- A Postgres database (we use Supabase)
+- Xero and/or QuickBooks developer apps, to connect real companies
+- A Supabase project for login, only if you turn on `AUTH_REQUIRED`
+
 ## Run it
 
 ```
@@ -25,14 +32,16 @@ npm test
 
 Apply the SQL files in `db/migrations/` to your database in filename order
 (001 accounts, 002 OAuth persistence, 003 row level security, 004 user profiles,
-005 user connection access).
+005 user connection access, 006 security audit log, 007 audit log protection).
 
 `.env.example` lists every setting. The API checks the required ones on startup and stops
 with a clear message if one is missing or invalid (`src/config/checkEnv.js`).
 
-`npm test` runs the backend tests. Three of them (`persistenceDates`,
+`npm test` runs the backend tests. Some of them (`persistence`, `persistenceDates`,
 `persistenceTransaction`, `userConnectionAccess`) use the real `DATABASE_URL`
-and write temporary rows, so point it at a development database.
+and write temporary rows, so point it at a development database, never production.
+With no `DATABASE_URL` set (and no `.env`), those tests are skipped and the rest pass.
+If `.env` still holds the placeholder `DATABASE_URL` from `.env.example`, they fail instead.
 
 ## Project layout
 
@@ -121,6 +130,26 @@ so users cannot discover another company's connection ID.
 
 All of the token checking is in `src/middleware/auth.js`. If the login system
 changes, only `verifyAccessToken()` there (inside `createAccessControl`) needs replacing.
+
+## Supported providers
+
+| Provider | Status |
+|---|---|
+| Xero | Supported (tested against Xero Demo Company) |
+| QuickBooks | Supported (tested against the Intuit sandbox) |
+| MYOB | Planned, no connector yet |
+
+## Limitations
+
+- Only Accounts data is stored. Customers, Invoices and Payments are out of scope (client decision).
+- The trial balance is fetched live and is not stored.
+- OAuth state is kept in memory, so run one API instance only.
+- The OAuth callback returns JSON instead of redirecting back to the portal.
+- Login is email and password only. Users are created in Supabase, with no sign-up page.
+- Audit logging is best effort and can lose events in a crash.
+- The deployed demo runs with `AUTH_REQUIRED=false`.
+
+See [DEPLOY.md](DEPLOY.md) section 8 for the full list.
 
 ## Deployed
 

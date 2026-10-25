@@ -11,7 +11,7 @@ npm run dev
 ```
 
 Opens on http://localhost:5173. In dev, `/api` is proxied to the middleware on
-http://localhost:3000 (see `vite.config.js`), so start that first (`node src/app.js` in the repo root).
+http://localhost:3000 (see `vite.config.js`), so start that first (`npm start` in the repo root).
 
 No backend handy? Run on sample data:
 
@@ -30,7 +30,7 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 
 | Call | Used by | Notes |
 |---|---|---|
-| `GET /connections` | company picker, Connections page | `{ data: [...] }`, needs the small route in `api-connections-route.md` |
+| `GET /connections` | company picker, Connections page | `{ data: [...] }`, see `api-connections-route.md` in this folder |
 | `GET /accounts` | Accounts page | needs `?connectionId=`, takes `page` and `pageSize` |
 | `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
