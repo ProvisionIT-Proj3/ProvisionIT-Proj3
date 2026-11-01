@@ -21,6 +21,13 @@ The trial balance is still fetched live (`GET /api/v1/trial-balance`).
 - Xero and/or QuickBooks developer apps, to connect real companies
 - A Supabase project for login, only if you turn on `AUTH_REQUIRED`
 
+## Scope
+
+Delivered: read-only Xero and QuickBooks Online connectors, a canonical account model,
+Accounts (stored) and Trial Balance (live), role-based access with an audit log, and an
+admin portal. Out of scope by client decision: Customers, Invoices and Payments.
+MYOB is not built (see Supported providers).
+
 ## Run it
 
 ```
@@ -29,6 +36,8 @@ cp .env.example .env     # then fill it in
 npm start                # http://localhost:3000
 npm test
 ```
+
+The portal runs separately: `cd portal && npm install && npm run dev` (see [portal/README.md](portal/README.md)).
 
 Apply the SQL files in `db/migrations/` to your database in filename order
 (001 accounts, 002 OAuth persistence, 003 row level security, 004 user profiles,
@@ -147,11 +156,15 @@ changes, only `verifyAccessToken()` there (inside `createAccessControl`) needs r
 - The OAuth callback returns JSON instead of redirecting back to the portal.
 - Login is email and password only. Users are created in Supabase, with no sign-up page.
 - Audit logging is best effort and can lose events in a crash.
-- The deployed demo runs with `AUTH_REQUIRED=false`.
+- `AUTH_REQUIRED` defaults to `false`, which leaves the API open. Set it to `true` on every real deployment (see [DEPLOY.md](DEPLOY.md) section 4, step 8).
 
 See [DEPLOY.md](DEPLOY.md) section 8 for the full list.
 
 ## Deployed
+
+- Portal: https://provisionit.vercel.app/
+- API: https://provisionit-proj3-production.up.railway.app (health check: `/health`)
+- Source: https://github.com/ProvisionIT-Proj3/ProvisionIT-Proj3
 
 `GET /health` returns `{ "status": "ok" }` with no login, for the host's health check.
 Browsers may only call the API from the addresses in `CORS_ORIGINS`.

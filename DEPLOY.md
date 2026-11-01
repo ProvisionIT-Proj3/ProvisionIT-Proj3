@@ -20,7 +20,8 @@ The API and the portal live in one repo. The API is the repo root (`npm start`),
       temporary rows to the `DATABASE_URL` database, so run them against a dev or staging database.
 - [ ] Production OAuth apps approved for each platform going live (Xero Demo Company and the QuickBooks
       Intuit sandbox have been run end to end; production apps are untested; there is no MYOB connector).
-- [ ] The portal login page (Giorgio's `gio/admin-portal` branch) is merged. It is needed before
+- [ ] The portal login page is on `main` (it is), and the portal build has `VITE_SUPABASE_URL` and
+      `VITE_SUPABASE_ANON_KEY` set. Without them the login page is hidden. Both are needed before
       `AUTH_REQUIRED=true` (section 4, step 8).
 - [ ] Client sign-off on the demo.
 - [ ] Everyone knows who may call a rollback (section 7).
@@ -39,7 +40,7 @@ The API and the portal live in one repo. The API is the repo root (`npm start`),
 | `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET` | production Xero app |
 | `XERO_REDIRECT_URI` | `https://<api-domain>/auth/xero/callback` (must match Xero exactly) |
 | `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI` | only if QuickBooks goes live; `QUICKBOOKS_ENVIRONMENT=production` |
-| `AUTH_REQUIRED` | `false` for the first deploy, `true` once the portal login is merged (section 4, step 8) |
+| `AUTH_REQUIRED` | `false` for the first deploy only, then `true` (section 4, step 8). Leaving it `false` leaves the whole API open |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase > Project Settings > API (used to check login tokens) |
 | `CORS_ORIGINS` | the portal's address, e.g. `https://your-portal.vercel.app` (no trailing slash, no path) |
 | `PORT` | set by Railway, leave it |
@@ -94,11 +95,11 @@ The API and the portal need each other's address, so the order matters.
 5. **Redirect URIs.** In each platform's developer portal, add the production callback
    (`https://<api-domain>/auth/xero/callback`). A mismatch fails as an OAuth error, check it by hand.
 6. **Connect the companies.** With `AUTH_REQUIRED=true` the connect link needs an admin Bearer token,
-   which a browser address bar cannot send. So connect while `AUTH_REQUIRED=false`: open
+   which a browser address bar cannot send. The portal's Connect button (Connections page, signed in as admin) attaches it for you. If you connect by URL instead, do it while `AUTH_REQUIRED=false`: open
    `https://<api-domain>/auth/<provider>/connect` for each platform, approve, then call Sync.
    Use sandbox or demo companies only while the API is open to anyone.
 7. **Create the first admin** (section 5).
-8. **Turn on login.** Once the portal login is merged and the admin exists, set `AUTH_REQUIRED=true` on
+8. **Turn on login.** Once the admin exists and the portal build has its Supabase variables, set `AUTH_REQUIRED=true` on
    Railway and let it redeploy.
 9. **Domain.** No custom domain has been chosen. Use the `*.vercel.app` and `*.up.railway.app`
    addresses for now. When a domain is chosen, update DNS, then update `CORS_ORIGINS`,
@@ -133,7 +134,7 @@ Check the real workflow, not just that the build went green.
 - [ ] `curl https://<api-domain>/health` returns `{"status":"ok"}`
 - [ ] After step 8: `curl https://<api-domain>/api/v1/accounts?connectionId=x` returns 401 (the API is locked)
 - [ ] The portal asks for a login, the admin can sign in, a wrong password is refused
-- [ ] A company is connected and synced (section 4, step 6). The callback currently answers with raw
+- [ ] A company is connected and synced (section 4, step 6). The Xero callback currently answers with raw
       JSON, that is expected.
 - [ ] In the portal: the company appears, Sync works, Accounts and Trial balance show data
 - [ ] Railway logs contain no tokens, secrets or full connection strings (NFR-02 spot check on real logs)
