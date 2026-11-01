@@ -1,12 +1,12 @@
 {
-  "name": "provision-it-canonical-mapping-poc",
+  "name": "provisionit-api",
   "version": "0.1.0",
-  "description": "Proof of concept: canonical data model & vendor mapping layer for the Provision IT accounting middleware (Xero / MYOB / QuickBooks)",
+  "description": "Read-only middleware and REST API over Xero and QuickBooks Online for the Provision IT admin portal",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "test": "node --experimental-test-module-mocks --test \"test/**/*.test.js\""
-    },
+  },
   "keywords": [],
   "author": "",
   "license": "UNLICENSED",

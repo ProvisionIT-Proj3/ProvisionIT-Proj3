@@ -30,7 +30,7 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 
 | Call | Used by | Notes |
 |---|---|---|
-| `GET /connections` | company picker, Connections page | `{ data: [...] }`, see `api-connections-route.md` in this folder |
+| `GET /connections` | company picker, Connections page | `{ data: [...] }`, display fields only (no tokens) |
 | `GET /accounts` | Accounts page | needs `?connectionId=`, takes `page` and `pageSize` |
 | `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
