@@ -10,6 +10,7 @@ const rolePermissions = Object.freeze({
     "accounting:sync",
     "connections:read",
     "connections:manage",
+    "audit:read",
   ]),
   user: Object.freeze(["accounting:read"]),
 });

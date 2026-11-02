@@ -66,6 +66,7 @@ test("successful multi-company authorization records safe audit events", async (
       connectionId: "connection-1",
       action: "connection.created",
       outcome: "success",
+      metadata: { companyName: "Company One" },
     },
     {
       provider: "xero",
@@ -73,6 +74,7 @@ test("successful multi-company authorization records safe audit events", async (
       connectionId: "connection-2",
       action: "connection.created",
       outcome: "success",
+      metadata: { companyName: "Company Two" },
     },
   ]);
   assert.doesNotMatch(JSON.stringify(events), /access-secret|refresh-secret|one-time-code/);

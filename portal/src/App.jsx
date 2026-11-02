@@ -4,6 +4,7 @@ import RequireAuth from './auth/RequireAuth';
 import { ConnectionProvider } from './ConnectionContext';
 import Layout from './components/Layout';
 import Accounts from './pages/Accounts';
+import Activity from './pages/Activity';
 import Connections from './pages/Connections';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="connections" element={<Connections />} />
             <Route path="accounts" element={<Accounts />} />
             <Route path="trial-balance" element={<TrialBalance />} />
+            <Route path="activity" element={<Activity />} />
             <Route path="*" element={<p className="muted">Page not found.</p>} />
           </Route>
         </Route>

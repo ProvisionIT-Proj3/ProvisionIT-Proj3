@@ -1,6 +1,6 @@
 import { ApiError, del as httpDel, get as httpGet, post as httpPost } from './http';
 import { mockGet, mockPost } from './mock';
-import { normalizeAccount, normalizeConnection, normalizeCustomer, normalizeInvoice, normalizePayment } from './normalize';
+import { normalizeAccount, normalizeActivity, normalizeConnection, normalizeCustomer, normalizeInvoice, normalizePayment } from './normalize';
 import { isSample } from './sample';
 
 // checked on every call so tests can switch it
@@ -47,6 +47,10 @@ export const api = {
   // admin only on the server, pulls fresh accounts from Xero / QuickBooks and stores them
   async syncAccounts(connectionId) {
     return post('/sync', { connectionId });
+  },
+  // admin only on the server, the audit log newest first. all=true adds the routine sign-in rows
+  async listActivity({ page, pageSize, all }) {
+    return toList(await get('/activity', { page, pageSize, all: all ? 'true' : undefined }), normalizeActivity);
   },
   // admin only on the server, gives the provider's login address and the page jumps there
   async startConnect(provider) {

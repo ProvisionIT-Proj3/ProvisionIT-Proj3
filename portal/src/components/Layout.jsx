@@ -13,6 +13,7 @@ const groups = [
       ['/connections', 'Connections', 'link'],
       ['/accounts', 'Accounts', 'list'],
       ['/trial-balance', 'Trial balance', 'chart'],
+      ['/activity', 'Activity log', 'file'],
     ],
   ],
 ];
