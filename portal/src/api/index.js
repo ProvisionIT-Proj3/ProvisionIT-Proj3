@@ -24,25 +24,12 @@ function toList(body, normalize) {
   };
 }
 
-// the trial balance reply is a plain list of accounts, wrapped or not
-function toRows(body) {
-  if (Array.isArray(body)) return body;
-  for (const key of ['data', 'accounts', 'rows']) {
-    if (Array.isArray(body?.[key])) return body[key];
-  }
-  return [];
-}
-
 export const api = {
   async listConnections() {
     return toList(await get('/connections'), normalizeConnection);
   },
   async listAccounts({ connectionId, page, pageSize }) {
     return toList(await get('/accounts', { connectionId, page, pageSize }), normalizeAccount);
-  },
-  async getTrialBalance(connectionId) {
-    const rows = toRows(await get('/trial-balance', { connectionId }));
-    return { items: rows.map(normalizeAccount), pagination: null };
   },
   // admin only on the server, pulls fresh accounts from Xero / QuickBooks and stores them
   async syncAccounts(connectionId) {

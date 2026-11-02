@@ -8,7 +8,6 @@ import Activity from './pages/Activity';
 import Connections from './pages/Connections';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
-import TrialBalance from './pages/TrialBalance';
 
 // companies only load once the user is signed in
 function Protected() {
@@ -31,7 +30,6 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="connections" element={<Connections />} />
             <Route path="accounts" element={<Accounts />} />
-            <Route path="trial-balance" element={<TrialBalance />} />
             <Route path="activity" element={<Activity />} />
             <Route path="*" element={<p className="muted">Page not found.</p>} />
           </Route>

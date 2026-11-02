@@ -27,10 +27,6 @@ describe('whole portal on sample data', () => {
     expect(await screen.findByRole('heading', { name: 'Accounts' })).toBeInTheDocument();
     expect(await screen.findByText('Cheque Account')).toBeInTheDocument();
     expect(screen.getByLabelText('Active company')).toHaveValue('c2');
-
-    await user.click(screen.getByRole('link', { name: 'Trial balance' }));
-    expect(await screen.findByRole('heading', { name: 'Trial balance' })).toBeInTheDocument();
-    expect(await screen.findByText('Accounts Receivable')).toBeInTheDocument();
   });
 
   it('has no invoices, payments or customers pages', async () => {
