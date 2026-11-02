@@ -24,7 +24,7 @@ The trial balance is still fetched live (`GET /api/v1/trial-balance`).
 ## Scope
 
 Delivered: read-only Xero and QuickBooks Online connectors, a canonical account model,
-Accounts (stored) and Trial Balance (live), role-based access with an audit log, and an
+Accounts (stored), role-based access with an audit log, and an
 admin portal. Out of scope by client decision: Customers, Invoices and Payments.
 MYOB is not built (see Supported providers).
 

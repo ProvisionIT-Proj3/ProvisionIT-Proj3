@@ -136,7 +136,7 @@ Check the real workflow, not just that the build went green.
 - [ ] The portal asks for a login, the admin can sign in, a wrong password is refused
 - [ ] A company is connected and synced (section 4, step 6). The Xero callback currently answers with raw
       JSON, that is expected.
-- [ ] In the portal: the company appears, Sync works, Accounts and Trial balance show data
+- [ ] In the portal: the company appears, Sync works, Accounts shows data
 - [ ] Railway logs contain no tokens, secrets or full connection strings (NFR-02 spot check on real logs)
 - [ ] After an authenticated request, check `security_audit_log` for its authentication and
       authorization events. They are written together after the response finishes.

@@ -32,7 +32,6 @@ All under `/api/v1` (set `VITE_API_URL` if the middleware mounts it somewhere el
 |---|---|---|
 | `GET /connections` | company picker, Connections page | `{ data: [...] }`, display fields only (no tokens) |
 | `GET /accounts` | Accounts page | needs `?connectionId=`, takes `page` and `pageSize` |
-| `GET /trial-balance` | Trial balance page | needs `?connectionId=` |
 | `POST /sync` | Sync button on Accounts | `?connectionId=`, admin only on the server |
 | `GET /activity` | Activity log page | `page`, `pageSize`, `all=true` adds routine sign-in rows, admin only on the server |
 | `GET /auth/<provider>/connect` | Connect buttons on Connections | admin only, sent with `Accept: application/json` it returns `{ data: { authorizationUrl } }` and the browser goes there |

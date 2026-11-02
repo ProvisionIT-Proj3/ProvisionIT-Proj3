@@ -113,8 +113,6 @@ export async function mockGet(path, params = {}) {
   if (!company) throw new ApiError('Company not found.', 404, 'NOT_FOUND');
   params = { ...params, connectionId: company.connection_id };
 
-  if (path === '/trial-balance') return { data: accountsFor(connections.indexOf(company) + 1) };
-
   let rows;
   if (path === '/invoices') {
     rows = invoices.filter((r) => r.connectionId === params.connectionId);
