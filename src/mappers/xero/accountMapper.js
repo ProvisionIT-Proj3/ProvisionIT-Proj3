@@ -5,6 +5,7 @@ const { parseAmount, indexDimensionsById, buildAccountRows } = require('../share
  *   1. GET /Accounts — dimension data (Code, Name, Type, Class, TaxType); no balances.
  *   2. GET /Reports/TrialBalance — balances grouped into named Sections; no Code
  *      or TaxType. The grand total is a title-less Section with only a SummaryRow.
+ *      Only its account rows are used; headers come from Class/Type (see accountGroups.js).
  */
 
 // Debit/Credit are the month's movement; the YTD pair is the as-at balance
@@ -20,6 +21,42 @@ const DR_CR_BY_CLASS = {
   LIABILITY: 'Cr',
   EQUITY: 'Cr',
   REVENUE: 'Cr',
+};
+
+// Header placement, as [group, subgroup?] keys from shared/accountGroups.js.
+// Type is the specific one, so it wins; Class is the fallback for a Type not
+// listed (Xero adds types over time).
+const XERO_TYPE_TO_GROUP = {
+  BANK: ['asset', 'currentAsset'],
+  CURRENT: ['asset', 'currentAsset'],
+  INVENTORY: ['asset', 'currentAsset'],
+  PREPAYMENT: ['asset', 'currentAsset'],
+  FIXED: ['asset', 'fixedAsset'],
+  NONCURRENT: ['asset', 'fixedAsset'],
+  CURRLIAB: ['liability', 'currentLiability'],
+  LIABILITY: ['liability', 'currentLiability'],
+  PAYGLIABILITY: ['liability', 'currentLiability'],
+  SUPERANNUATIONLIABILITY: ['liability', 'currentLiability'],
+  WAGESPAYABLELIABILITY: ['liability', 'currentLiability'],
+  TERMLIAB: ['liability', 'nonCurrentLiability'],
+  EQUITY: ['equity'],
+  REVENUE: ['income'],
+  SALES: ['income'],
+  DIRECTCOSTS: ['costOfSales'],
+  EXPENSE: ['expense'],
+  OVERHEADS: ['expense'],
+  DEPRECIATN: ['expense'],
+  WAGESEXPENSE: ['expense'],
+  SUPERANNUATIONEXPENSE: ['expense'],
+  OTHERINCOME: ['otherIncome'],
+};
+
+const XERO_CLASS_TO_GROUP = {
+  ASSET: ['asset'],
+  LIABILITY: ['liability'],
+  EQUITY: ['equity'],
+  REVENUE: ['income'],
+  EXPENSE: ['expense'],
 };
 
 const XERO_TAX_TYPE_TO_CLIENT_CODE = {
@@ -62,6 +99,11 @@ function mapXeroAccountDimension(xeroAccount) {
     class: xeroAccount.Class,
     taxCode: mapXeroTaxCode(xeroAccount.TaxType),
   };
+}
+
+/** Where an account's header goes; undefined (so unclassified) without a GET /Accounts match. */
+function classifyXeroAccount(dimension) {
+  return XERO_TYPE_TO_GROUP[dimension.type] || XERO_CLASS_TO_GROUP[dimension.class];
 }
 
 function cellNumber(cell) {
@@ -168,6 +210,7 @@ function buildXeroAccounts(rawAccounts, rawTrialBalanceReport) {
     sourceSystem: 'xero',
     sections: parseTrialBalanceReport(rawTrialBalanceReport),
     dimensionById: indexDimensionsById(rawAccounts, mapXeroAccountDimension),
+    classify: classifyXeroAccount,
     fallbackDrCr: (dimension) => DR_CR_BY_CLASS[dimension.class],
     vendorSpecific: (dimension) => ({ class: dimension.class }),
   });
@@ -175,10 +218,13 @@ function buildXeroAccounts(rawAccounts, rawTrialBalanceReport) {
 
 module.exports = {
   mapXeroAccountDimension,
+  classifyXeroAccount,
   parseTrialBalanceReport,
   buildXeroAccounts,
   getXeroReportDate,
   mapXeroTaxCode,
   XERO_TAX_TYPE_TO_CLIENT_CODE,
+  XERO_TYPE_TO_GROUP,
+  XERO_CLASS_TO_GROUP,
   DR_CR_BY_CLASS,
 };

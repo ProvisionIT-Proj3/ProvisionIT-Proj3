@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const quickbooks = require("../src/mappers/quickbooks/accountMapper");
 const xero = require("../src/mappers/xero/accountMapper");
 const { validate } = require("../src/canonical/schemas");
+const { GROUPS, SUBGROUPS } = require("../src/mappers/shared/accountGroups");
 
 // Property tests: hundreds of random reports per vendor, each checked against
 // an answer computed independently from the generated numbers. The generator
@@ -68,6 +69,10 @@ function expected(account, fallback) {
   return { drCr: net > 0 ? "Dr" : net < 0 ? "Cr" : fallback, value: Math.abs(net) };
 }
 
+// Types that agree with each class, as in real data, and the header group each class lands in.
+const XERO_TYPE = { ASSET: "BANK", LIABILITY: "CURRLIAB", EQUITY: "EQUITY", REVENUE: "REVENUE", EXPENSE: "EXPENSE" };
+const QBO_TYPE = { ASSET: "Bank", LIABILITY: "Accounts Payable", EQUITY: "Equity", REVENUE: "Income", EXPENSE: "Expense" };
+const GROUP_OF_CLASS = { ASSET: "asset", LIABILITY: "liability", EQUITY: "equity", REVENUE: "income", EXPENSE: "expense" };
 const QBO_CLASSIFICATION = { ASSET: "Asset", LIABILITY: "Liability", EQUITY: "Equity", REVENUE: "Revenue", EXPENSE: "Expense" };
 const QBO_FALLBACK = { Asset: "Dr", Expense: "Dr", Liability: "Cr", Equity: "Cr", Revenue: "Cr" };
 const XERO_FALLBACK = { ASSET: "Dr", EXPENSE: "Dr", LIABILITY: "Cr", EQUITY: "Cr", REVENUE: "Cr" };
@@ -115,7 +120,16 @@ function xeroReport(accounts) {
 
 // --- the properties ----------------------------------------------------------
 
-function checkProperties({ vendor, accounts, output, fallback, label }) {
+// The side a header takes when its members net to zero: its group's, or none for Unclassified.
+function normalSideOf(code) {
+  const group = Object.values(GROUPS).find((g) => g.code === code);
+  if (group) return group.normalSide;
+  const sub = Object.values(SUBGROUPS).find((g) => g.code === code);
+  return sub ? GROUPS[sub.parent].normalSide : undefined;
+}
+
+// groupOf(account) is the header group the account should land under, or "unclassified".
+function checkProperties({ vendor, accounts, output, fallback, groupOf, label }) {
   const fail = (msg) => `${label}: ${msg}`;
 
   const ids = output.map((r) => r.id);
@@ -128,13 +142,19 @@ function checkProperties({ vendor, accounts, output, fallback, label }) {
     assert.ok([undefined, "Dr", "Cr"].includes(row.drCr), fail(`drCr was ${row.drCr}`));
     assert.ok(Number.isFinite(row.value) && row.value >= 0, fail(`value ${row.value} must be a finite, non-negative number`));
     assert.equal(round2(row.value), row.value, fail(`value ${row.value} must be rounded to cents`));
-    assert.equal(row.level, row.isHeader ? 1 : 2, fail("level matches header/detail"));
   }
 
-  // Report order: every detail row sits under a header, and headers are numbered in order.
+  // Layout: headers use codes from the group table, in chart order, once each; every detail row sits under one.
   assert.ok(output.length === 0 || output[0].isHeader, fail("the first row must be a header"));
   const headers = output.filter((r) => r.isHeader);
-  assert.deepEqual(headers.map((h) => h.code), headers.map((_, i) => `HDR-${i + 1}`), fail("header codes"));
+  const subgroupCodes = Object.values(SUBGROUPS).map((sub) => sub.code);
+  const knownCodes = [...Object.values(GROUPS).map((g) => g.code), ...subgroupCodes, "UNCLASSIFIED"];
+  assert.ok(headers.every((h) => knownCodes.includes(h.code)), fail(`header codes ${headers.map((h) => h.code)}`));
+  assert.equal(new Set(headers.map((h) => h.code)).size, headers.length, fail("each header appears once"));
+
+  const topCodes = headers.filter((h) => h.level === 1).map((h) => h.code);
+  const chartOrder = [...Object.values(GROUPS).map((g) => g.code), "UNCLASSIFIED"];
+  assert.deepEqual(topCodes, chartOrder.filter((c) => topCodes.includes(c)), fail("groups out of chart order"));
 
   // Oracle: every generated account with an id comes out once, with the side and value worked out independently.
   const details = new Map(output.filter((r) => !r.isHeader).map((r) => [r.id, r]));
@@ -148,16 +168,35 @@ function checkProperties({ vendor, accounts, output, fallback, label }) {
     assert.equal(got.name, a.name, fail(`account ${a.id} name`));
   }
 
-  // Each generated report carries no Summary rows, so a header is its detail rows netted.
+  // Walk the output with a stack of open headers: each detail row must be one level below its nearest header,
+  // under the group its class belongs to.
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const headerRows = output.map((r, i) => ({ r, i })).filter(({ r }) => r.isHeader);
-  headerRows.forEach(({ r: header, i }, h) => {
-    const end = h + 1 < headerRows.length ? headerRows[h + 1].i : output.length;
-    const members = output.slice(i + 1, end).map((r) => byId.get(r.id));
-    const net = round2(members.reduce((sum, a) => sum + a.debit, 0) - members.reduce((sum, a) => sum + a.credit, 0));
+  const open = [];
+  const members = new Map(); // header code -> accounts beneath it
+  for (const row of output) {
+    if (row.isHeader) {
+      while (open.length && open.at(-1).level >= row.level) open.pop();
+      open.push(row);
+      members.set(row.code, []);
+      continue;
+    }
+    assert.equal(row.level, open.at(-1).level + 1, fail(`row ${row.id} level`));
+    const account = byId.get(row.id);
+    const top = open[0];
+    const want = groupOf(account);
+    assert.equal(top.code, want === "unclassified" ? "UNCLASSIFIED" : GROUPS[want].code, fail(`account ${row.id} group`));
+    for (const header of open) members.get(header.code).push(account);
+  }
+
+  // The generated reports carry no Summary rows, and headers ignore them anyway: a header is its members netted.
+  for (const header of headers) {
+    const list = members.get(header.code);
+    const net = round2(list.reduce((sum, a) => sum + a.debit, 0) - list.reduce((sum, a) => sum + a.credit, 0));
+    const normalSide = normalSideOf(header.code);
     assert.equal(header.value, Math.abs(net), fail(`header ${header.name} value`));
-    assert.equal(header.drCr, net > 0 ? "Dr" : net < 0 ? "Cr" : undefined, fail(`header ${header.name} side`));
-  });
+    assert.equal(header.drCr, net > 0 ? "Dr" : net < 0 ? "Cr" : normalSide, fail(`header ${header.name} side`));
+    assert.equal(header._vendorSpecific.memberCount, list.length, fail(`header ${header.name} memberCount`));
+  }
 }
 
 test(`QuickBooks mapper properties over ${CASES} random reports (seed ${SEED})`, () => {
@@ -167,7 +206,7 @@ test(`QuickBooks mapper properties over ${CASES} random reports (seed ${SEED})`,
     const report = qboReport(rand, accounts);
     const output = quickbooks.buildQuickbooksAccounts([], report);
     // No Account query in this run, so there is no Classification: a zero balance has no side.
-    checkProperties({ vendor: "quickbooks", accounts, output, fallback: () => undefined, label: `qbo case ${n}` });
+    checkProperties({ vendor: "quickbooks", accounts, output, fallback: () => undefined, groupOf: () => "unclassified", label: `qbo case ${n}` });
   }
 });
 
@@ -175,13 +214,14 @@ test(`QuickBooks mapper properties with the Account list joined in (seed ${SEED}
   const rand = prng(SEED + 1);
   for (let n = 0; n < CASES; n++) {
     const accounts = generateAccounts(rand);
-    const rawAccounts = accounts.map((a) => ({ Id: a.id, Name: a.name, Classification: QBO_CLASSIFICATION[a.class], AccountType: "Bank" }));
+    const rawAccounts = accounts.map((a) => ({ Id: a.id, Name: a.name, Classification: QBO_CLASSIFICATION[a.class], AccountType: QBO_TYPE[a.class] }));
     const output = quickbooks.buildQuickbooksAccounts(rawAccounts, qboReport(rand, accounts));
     checkProperties({
       vendor: "quickbooks",
       accounts,
       output,
       fallback: (a) => QBO_FALLBACK[QBO_CLASSIFICATION[a.class]],
+      groupOf: (a) => GROUP_OF_CLASS[a.class],
       label: `qbo+accounts case ${n}`,
     });
   }
@@ -191,9 +231,9 @@ test(`Xero mapper properties over ${CASES} random reports (seed ${SEED})`, () =>
   const rand = prng(SEED + 2);
   for (let n = 0; n < CASES; n++) {
     const accounts = generateAccounts(rand);
-    const rawAccounts = accounts.map((a) => ({ AccountID: a.id, Code: a.id.replace("id-", ""), Name: a.name, Type: "BANK", Class: a.class }));
+    const rawAccounts = accounts.map((a) => ({ AccountID: a.id, Code: a.id.replace("id-", ""), Name: a.name, Type: XERO_TYPE[a.class], Class: a.class }));
     const output = xero.buildXeroAccounts(rawAccounts, xeroReport(accounts));
-    checkProperties({ vendor: "xero", accounts, output, fallback: (a) => XERO_FALLBACK[a.class], label: `xero case ${n}` });
+    checkProperties({ vendor: "xero", accounts, output, fallback: (a) => XERO_FALLBACK[a.class], groupOf: (a) => GROUP_OF_CLASS[a.class], label: `xero case ${n}` });
   }
 });
 
@@ -227,9 +267,9 @@ test("hostile input never crashes the parsers with anything but the deliberate a
   }
 });
 
-// The generators above give every account a distinct id and section title, so
-// they can't exercise id collisions. This one repeats section titles and
-// leaves account ids off, which makes ids like "unmatched:<name>" collide.
+// The generators above give every account a distinct id, so they can't
+// exercise id collisions. This one repeats section titles and leaves account
+// ids off, which makes ids like "unmatched:<name>" collide.
 test("ids stay unique and no row is lost when section titles and unmatched names repeat", () => {
   const rand = prng(SEED + 4);
   for (let n = 0; n < CASES; n++) {
@@ -267,7 +307,8 @@ test("ids stay unique and no row is lost when section titles and unmatched names
       const ids = output.map((r) => r.id);
       assert.equal(new Set(ids).size, ids.length, `${vendor} case ${n}: duplicate ids in ${JSON.stringify(ids)}`);
       assert.equal(output.filter((r) => !r.isHeader).length, detailCount, `${vendor} case ${n}: a row was lost`);
-      assert.equal(output.filter((r) => r.isHeader).length, sections.length, `${vendor} case ${n}: a header was lost`);
+      // No Account list, so every row is unclassified: one header holds them all, however many sections there were.
+      assert.equal(output.filter((r) => r.isHeader).length, detailCount > 0 ? 1 : 0, `${vendor} case ${n}: wrong header count`);
     }
   }
 });

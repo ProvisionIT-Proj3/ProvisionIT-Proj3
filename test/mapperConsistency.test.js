@@ -18,6 +18,9 @@ const BOOKS = [
   ["200", "Sales", "REVENUE", 0, 2000],
   ["469", "Rent", "EXPENSE", 1500, 0],
 ];
+// Types that agree with each class, as they do in real data (Type refines Class).
+const XERO_TYPE = { ASSET: "BANK", LIABILITY: "CURRLIAB", EQUITY: "EQUITY", REVENUE: "REVENUE", EXPENSE: "EXPENSE" };
+const QBO_TYPE = { ASSET: "Bank", LIABILITY: "Accounts Payable", EQUITY: "Equity", REVENUE: "Income", EXPENSE: "Expense" };
 const money = (n) => (n === 0 ? "" : n.toFixed(2));
 const idOf = (code) => `id-${code}`;
 
@@ -28,7 +31,7 @@ function quickbooksOutput() {
     AcctNum: code,
     Name: name,
     Classification: classification[cls],
-    AccountType: "Bank",
+    AccountType: QBO_TYPE[cls],
     TaxCodeRef: { value: "2" },
   }));
   const report = {
@@ -51,7 +54,7 @@ function xeroOutput() {
     AccountID: idOf(code),
     Code: code,
     Name: name,
-    Type: "BANK",
+    Type: XERO_TYPE[cls],
     Class: cls,
     TaxType: "OUTPUT",
   }));
@@ -139,15 +142,18 @@ test("both vendors' detail rows reproduce the same trial balance totals", () => 
   }
 });
 
-// Known gaps: the shape is consistent, but some VALUES still depend on the
-// vendor. The first test pins today's behaviour so a change is noticed; the
-// todos stay visible in the test output without blocking CI.
-test("known difference: header grouping depends on the vendor", () => {
-  // Xero groups by account class; QuickBooks' flat report gives one "Accounts" header.
-  const names = (output) => headerRows(output).map((h) => h.name);
-  assert.deepEqual(names(OUTPUTS.quickbooks), ["Accounts"]);
-  assert.deepEqual(names(OUTPUTS.xero), ["Assets", "Liabilities", "Equity", "Revenue", "Expenses"]);
+test("both vendors build the same headers from the same books", () => {
+  // Headers come from account class/type, not the vendor's report layout, so
+  // QuickBooks' flat report and Xero's sections give the same structure.
+  const structure = (output) => output.filter((r) => r.isHeader).map((h) => [h.code, h.name, h.type, h.level, h.drCr, h.value]);
+
+  assert.deepEqual(structure(OUTPUTS.quickbooks), structure(OUTPUTS.xero));
+  assert.deepEqual(
+    structure(OUTPUTS.xero).map(([code]) => code),
+    ["1-0000", "1-1000", "2-0000", "2-1000", "3-0000", "4-0000", "6-0000"]
+  );
 });
 
+// Known gap: the shape is consistent, but account `type` values still depend
+// on the vendor. The todo stays visible in the test output without blocking CI.
 test.todo("account `type` uses one vocabulary across vendors (Xero 'CURRLIAB' vs QuickBooks 'Accounts Payable')");
-test.todo("QuickBooks headers group accounts by Classification, as Xero's sections do");

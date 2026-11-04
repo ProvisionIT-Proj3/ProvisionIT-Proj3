@@ -23,6 +23,34 @@ const DR_CR_BY_CLASSIFICATION = {
   Revenue: 'Cr',
 };
 
+// Header placement, as [group, subgroup?] keys from shared/accountGroups.js.
+// AccountType is the specific one, so it wins; Classification is the fallback.
+const QBO_TYPE_TO_GROUP = {
+  'Bank': ['asset', 'currentAsset'],
+  'Accounts Receivable': ['asset', 'currentAsset'],
+  'Other Current Asset': ['asset', 'currentAsset'],
+  'Fixed Asset': ['asset', 'fixedAsset'],
+  'Other Asset': ['asset'],
+  'Accounts Payable': ['liability', 'currentLiability'],
+  'Credit Card': ['liability', 'currentLiability'],
+  'Other Current Liability': ['liability', 'currentLiability'],
+  'Long Term Liability': ['liability', 'nonCurrentLiability'],
+  'Equity': ['equity'],
+  'Income': ['income'],
+  'Cost of Goods Sold': ['costOfSales'],
+  'Expense': ['expense'],
+  'Other Income': ['otherIncome'],
+  'Other Expense': ['otherExpense'],
+};
+
+const QBO_CLASSIFICATION_TO_GROUP = {
+  Asset: ['asset'],
+  Liability: ['liability'],
+  Equity: ['equity'],
+  Revenue: ['income'],
+  Expense: ['expense'],
+};
+
 // Keyed on the AU TaxCode Name (via taxCodeKey), mapped onto the same client
 // codes as the Xero mapper. Input tax has no client code, same as Xero's
 // INPUTTAXED. Unlisted names come through as UNMAPPED:<name>.
@@ -71,8 +99,26 @@ function mapQuickbooksAccountDimension(qboAccount, taxCodeNameById) {
     name: qboAccount.Name,
     type: qboAccount.AccountType,
     classification: qboAccount.Classification,
+    depth: subAccountDepth(qboAccount),
+    parentId: qboAccount.ParentRef?.value,
     taxCode: mapQuickbooksTaxCode(qboAccount.TaxCodeRef, taxCodeNameById),
   };
+}
+
+/**
+ * How many levels down the account tree an account sits: 0 for a top-level
+ * account. FullyQualifiedName is "Parent:Child:Grandchild"; a sub-account
+ * without it counts as one level down.
+ */
+function subAccountDepth(qboAccount) {
+  const fullName = qboAccount.FullyQualifiedName;
+  if (typeof fullName === 'string' && fullName.includes(':')) return fullName.split(':').length - 1;
+  return qboAccount.SubAccount ? 1 : 0;
+}
+
+/** Where an account's header goes; undefined (so unclassified) without an Account query match. */
+function classifyQuickbooksAccount(dimension) {
+  return QBO_TYPE_TO_GROUP[dimension.type] || QBO_CLASSIFICATION_TO_GROUP[dimension.classification];
 }
 
 function cellNumber(cell) {
@@ -197,17 +243,21 @@ function buildQuickbooksAccounts(rawAccounts, rawTrialBalanceReport, rawTaxCodes
     sourceSystem: 'quickbooks',
     sections: parseTrialBalanceReport(rawTrialBalanceReport),
     dimensionById: indexDimensionsById(rawAccounts, (a) => mapQuickbooksAccountDimension(a, taxCodeNameById)),
+    classify: classifyQuickbooksAccount,
     fallbackDrCr: (dimension) => DR_CR_BY_CLASSIFICATION[dimension.classification],
-    vendorSpecific: (dimension) => ({ classification: dimension.classification }),
+    vendorSpecific: (dimension) => ({ classification: dimension.classification, parentId: dimension.parentId }),
   });
 }
 
 module.exports = {
   mapQuickbooksAccountDimension,
+  classifyQuickbooksAccount,
   parseTrialBalanceReport,
   buildQuickbooksAccounts,
   getQuickbooksReportDate,
   mapQuickbooksTaxCode,
   QBO_TAX_CODE_NAME_TO_CLIENT_CODE,
+  QBO_TYPE_TO_GROUP,
+  QBO_CLASSIFICATION_TO_GROUP,
   DR_CR_BY_CLASSIFICATION,
 };

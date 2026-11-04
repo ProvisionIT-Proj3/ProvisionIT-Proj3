@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildQuickbooksAccounts,
+  classifyQuickbooksAccount,
   mapQuickbooksAccountDimension,
   mapQuickbooksTaxCode,
   parseTrialBalanceReport,
@@ -80,18 +81,31 @@ const RAW_TRIAL_BALANCE = {
 test("buildQuickbooksAccounts returns canonical account rows, not raw QBO fields", () => {
   const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, RAW_TRIAL_BALANCE, RAW_TAX_CODES);
 
-  // 2 sections x (1 header + 1 detail) = 4 rows
-  assert.equal(accounts.length, 4);
+  // Assets > Current Assets > Checking, then Income > Sales. The report's own
+  // sections ("Revenue", "Asset") don't decide the headers; the accounts' types do.
+  assert.deepEqual(
+    accounts.map((a) => [a.code, a.name, a.level]),
+    [
+      ["1-0000", "Assets", 1],
+      ["1-1000", "Current Assets", 2],
+      ["1000", "Checking", 3],
+      ["4-0000", "Income", 1],
+      ["79", "Sales", 2],
+    ]
+  );
+  const [assets, currentAssets, checking, income, sales] = accounts;
 
-  const [revenueHeader, sales, assetHeader, checking] = accounts;
+  assert.equal(assets.isHeader, true);
+  assert.equal(assets.type, "Asset");
+  assert.equal(assets.sourceSystem, "quickbooks");
+  // Checking is 0.00 on both sides, so the header takes its group's normal side.
+  assert.equal(assets.value, 0);
+  assert.equal(assets.drCr, "Dr");
+  assert.equal(currentAssets.value, 0);
 
-  assert.equal(revenueHeader.isHeader, true);
-  assert.equal(revenueHeader.name, "Revenue");
-  assert.equal(revenueHeader.code, "HDR-1");
-  assert.equal(revenueHeader.level, 1);
-  assert.equal(revenueHeader.drCr, "Cr");
-  assert.equal(revenueHeader.value, 500);
-  assert.equal(revenueHeader.sourceSystem, "quickbooks");
+  assert.equal(income.isHeader, true);
+  assert.equal(income.drCr, "Cr");
+  assert.equal(income.value, 500);
 
   assert.equal(sales.isHeader, false);
   assert.equal(sales.id, "79");
@@ -102,16 +116,12 @@ test("buildQuickbooksAccounts returns canonical account rows, not raw QBO fields
   assert.equal(sales.value, 500);
   assert.equal(sales.taxCode, "GST");
   assert.equal(sales.sourceSystem, "quickbooks");
+  assert.equal(sales._vendorSpecific.reportSection, "Revenue"); // kept for traceability only
 
   // Raw QBO field names must not leak through.
   assert.equal(sales.Id, undefined);
   assert.equal(sales.AcctNum, undefined);
   assert.equal(sales.AccountType, undefined);
-
-  assert.equal(assetHeader.name, "Asset");
-  assert.equal(assetHeader.code, "HDR-2");
-  // No Summary row: header value/drCr fall back to summing detail rows (0.00 debit, 0 credit).
-  assert.equal(assetHeader.value, 0);
 
   assert.equal(checking.code, "1000"); // AcctNum present -> used directly
   assert.equal(checking.type, "Bank");
@@ -169,18 +179,19 @@ test("parseTrialBalanceReport handles flat account rows and ignores the GrandTot
   );
 });
 
-test("buildQuickbooksAccounts maps a flat trial balance to a header plus detail rows", () => {
+test("buildQuickbooksAccounts gives a flat trial balance real headers, grouped by account type", () => {
   const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, FLAT_TRIAL_BALANCE, RAW_TAX_CODES);
 
-  assert.equal(accounts.length, 3);
-  assert.equal(accounts[0].isHeader, true);
-  // The flat "Accounts" header holds both sides, which net to zero: no side, value 0.
-  assert.equal(accounts[0].value, 0);
-  assert.equal(accounts[0].drCr, undefined);
-  assert.equal(accounts[1].name, "Checking");
-  assert.equal(accounts[1].drCr, "Dr");
-  assert.equal(accounts[2].name, "Sales");
-  assert.equal(accounts[2].drCr, "Cr");
+  assert.deepEqual(
+    accounts.map((a) => [a.name, a.isHeader, a.drCr, a.value]),
+    [
+      ["Assets", true, "Dr", 500],
+      ["Current Assets", true, "Dr", 500],
+      ["Checking", false, "Dr", 500],
+      ["Income", true, "Cr", 500],
+      ["Sales", false, "Cr", 500],
+    ]
+  );
   assert.equal(accounts.some((a) => a.id === "header:undefined"), false);
 });
 
@@ -193,7 +204,9 @@ test("negative amounts flip the side instead of reporting a zero balance", () =>
       ],
     },
   };
-  const [, checking, sales] = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+  const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+  const checking = accounts.find((a) => a.name === "Checking");
+  const sales = accounts.find((a) => a.name === "Sales");
 
   assert.equal(checking.drCr, "Cr");
   assert.equal(checking.value, 50);
@@ -227,7 +240,8 @@ test("repeated ids get a #n suffix so one sync can't hit the unique (connection,
   };
   const ids = buildQuickbooksAccounts([], report).map((a) => a.id);
 
-  assert.deepEqual(ids, ["header:Revenue", "unmatched:Mystery", "unmatched:Mystery#2", "header:Revenue#2"]);
+  // No Account list, so nothing can be classified: one Unclassified header, however many sections.
+  assert.deepEqual(ids, ["header:unclassified", "unmatched:Mystery", "unmatched:Mystery#2"]);
 });
 
 test("a flat row with no account id is kept as an unmatched row, not dropped", () => {
@@ -239,8 +253,13 @@ test("a flat row with no account id is kept as an unmatched row, not dropped", (
       ],
     },
   };
-  const [, checking, mystery] = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+  const accounts = buildQuickbooksAccounts(RAW_ACCOUNTS, report);
+  const checking = accounts.find((a) => a.name === "Checking");
+  const mystery = accounts.find((a) => a.name === "Mystery");
 
+  const unclassified = accounts.find((a) => a.id === "header:unclassified"); // holds Mystery only
+  assert.equal(unclassified.value, 500);
+  assert.equal(unclassified.drCr, "Cr");
   assert.equal(mystery.id, "unmatched:Mystery");
   assert.equal(mystery.name, "Mystery");
   assert.equal(mystery.drCr, "Cr");
@@ -258,13 +277,13 @@ test("an id-less total line is not counted as an account, flat or nested", () =>
   const checking = { type: "Data", ColData: [{ value: "Checking", id: "35" }, { value: "500.00" }, { value: "" }] };
 
   const flat = buildQuickbooksAccounts(RAW_ACCOUNTS, { Rows: { Row: [checking, ...totals] } });
-  assert.deepEqual(flat.map((a) => a.name), ["Accounts", "Checking"]);
+  assert.deepEqual(flat.map((a) => a.name), ["Assets", "Current Assets", "Checking"]);
   assert.equal(flat[0].value, 500); // not inflated by the total lines
 
   const nested = buildQuickbooksAccounts(RAW_ACCOUNTS, {
     Rows: { Row: [{ type: "Section", Header: { ColData: [{ value: "Assets" }] }, Rows: { Row: [checking, ...totals] } }] },
   });
-  assert.deepEqual(nested.map((a) => a.name), ["Assets", "Checking"]);
+  assert.deepEqual(nested.map((a) => a.name), ["Assets", "Current Assets", "Checking"]);
 });
 
 test("the total-line guard never drops a row that has an id, or an account that merely starts with 'Total'", () => {
@@ -281,6 +300,29 @@ test("the total-line guard never drops a row that has an id, or an account that 
   const names = buildQuickbooksAccounts([], report).filter((a) => !a.isHeader).map((a) => a.name);
 
   assert.deepEqual(names, ["Total Loss Reserve", "Totalizer Fees"]);
+});
+
+test("sub-accounts sit a level deeper per level of the QBO account tree", () => {
+  const accounts = [
+    { Id: "1", Name: "Utilities", FullyQualifiedName: "Utilities", AccountType: "Expense", Classification: "Expense" },
+    { Id: "2", Name: "Electricity", FullyQualifiedName: "Utilities:Electricity", SubAccount: true, ParentRef: { value: "1" }, AccountType: "Expense", Classification: "Expense" },
+    { Id: "3", Name: "Solar", FullyQualifiedName: "Utilities:Electricity:Solar", SubAccount: true, ParentRef: { value: "2" }, AccountType: "Expense", Classification: "Expense" },
+    { Id: "4", Name: "Water", SubAccount: true, ParentRef: { value: "1" }, AccountType: "Expense", Classification: "Expense" }, // no FullyQualifiedName
+  ];
+  const data = (name, id) => ({ type: "Data", ColData: [{ value: name, id }, { value: "10.00" }, { value: "" }] });
+  const report = { Rows: { Row: [data("Utilities", "1"), data("Electricity", "2"), data("Solar", "3"), data("Water", "4")] } };
+
+  const rows = buildQuickbooksAccounts(accounts, report);
+  assert.deepEqual(rows.map((r) => [r.name, r.level]), [["Expenses", 1], ["Utilities", 2], ["Electricity", 3], ["Solar", 4], ["Water", 3]]);
+  assert.equal(rows.find((r) => r.id === "3")._vendorSpecific.parentId, "2");
+  assert.equal(rows[0].value, 40); // the header totals every account once, parents and sub-accounts alike
+});
+
+test("classifyQuickbooksAccount uses AccountType, falls back to Classification, else is unclassified", () => {
+  assert.deepEqual(classifyQuickbooksAccount({ type: "Long Term Liability", classification: "Liability" }), ["liability", "nonCurrentLiability"]);
+  assert.deepEqual(classifyQuickbooksAccount({ type: "Cost of Goods Sold" }), ["costOfSales"]);
+  assert.deepEqual(classifyQuickbooksAccount({ type: "Some New Type", classification: "Asset" }), ["asset"]);
+  assert.equal(classifyQuickbooksAccount({}), undefined);
 });
 
 test("getQuickbooksReportDate reads Header.EndPeriod", () => {

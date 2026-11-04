@@ -1,9 +1,10 @@
 const { toMoney } = require('../../canonical/utils');
+const { GROUP_ORDER, groupDefinition, subgroupsOf, resolveClassification } = require('./accountGroups');
 
 /**
  * Vendor mappers parse their TrialBalance into sections of
  * { accountId, name, debit, credit } rows. Header and detail rows are built
- * here so a fix applies to every vendor.
+ * here so a fix applies to every vendor. Headers come from accountGroups.js.
  */
 
 // Plain decimals or comma-grouped thousands; European "1.234,50" is rejected, not misread.
@@ -80,29 +81,31 @@ function indexDimensionsById(rawAccounts, mapDimension) {
 
 const sumOf = (rows, field) => rows.reduce((sum, r) => sum + r[field], 0);
 
-function buildHeaderRow(section, sectionIndex, sourceSystem) {
-  const title = section.title || `Section ${sectionIndex}`;
-  const debit = section.summary?.debit ?? sumOf(section.rows, 'debit');
-  const credit = section.summary?.credit ?? sumOf(section.rows, 'credit');
-  // No fallback: a section netting to zero has no meaningful side.
-  const { drCr, value } = netBalance(debit, credit, undefined);
+/**
+ * A header nets the debits and credits of every detail row beneath it. The
+ * vendor reports have no totals for these groups, so none are read from them.
+ */
+function buildHeaderRow({ id, definition, level, members, sourceSystem, vendorSpecific }) {
+  const debit = sumOf(members, 'debit');
+  const credit = sumOf(members, 'credit');
+  const { drCr, value } = netBalance(debit, credit, definition.normalSide);
 
   return {
-    id: `header:${title}`,
+    id,
     sourceSystem,
-    code: `HDR-${sectionIndex}`,
-    name: title,
-    type: title,
+    code: definition.code,
+    name: definition.name,
+    type: definition.type,
     drCr,
     isHeader: true,
-    level: 1,
+    level,
     value,
     taxCode: undefined,
-    _vendorSpecific: { sectionRowCount: section.rows.length, synthesizedCode: true },
+    _vendorSpecific: { ...vendorSpecific, memberCount: members.length, synthesized: true },
   };
 }
 
-function buildDetailRow(row, dimension, { sourceSystem, fallbackDrCr, vendorSpecific }) {
+function buildDetailRow({ row, dimension, level, reportSection }, { sourceSystem, fallbackDrCr, vendorSpecific }) {
   const { drCr, value } = netBalance(row.debit, row.credit, fallbackDrCr(dimension));
 
   return {
@@ -113,36 +116,106 @@ function buildDetailRow(row, dimension, { sourceSystem, fallbackDrCr, vendorSpec
     type: dimension.type,
     drCr,
     isHeader: false,
-    level: 2,
+    level,
     value,
     taxCode: dimension.taxCode,
     _vendorSpecific: {
       ...vendorSpecific(dimension),
       matchedToAccountsList: Boolean(dimension.id),
+      reportSection,
     },
   };
 }
 
 /**
- * Build canonical Account rows: a header per section, then its details.
+ * Sort the detail accounts into { groupKey -> { subgroupKey | '' -> details } },
+ * keeping report order inside each bucket.
+ */
+function bucketByGroup(details, classify) {
+  const groups = new Map();
+
+  for (const detail of details) {
+    const { groupKey, subgroupKey = '' } = resolveClassification(classify(detail.dimension));
+    if (!groups.has(groupKey)) groups.set(groupKey, new Map());
+    const subgroups = groups.get(groupKey);
+    if (!subgroups.has(subgroupKey)) subgroups.set(subgroupKey, []);
+    subgroups.get(subgroupKey).push(detail);
+  }
+
+  return groups;
+}
+
+/**
+ * Build canonical Account rows. Detail accounts come from the trial balance and
+ * are grouped by classify(); a header is then synthesised for each group (and
+ * subgroup) that has any, with its subtotal. The trial balance's own sections
+ * only record where a row came from.
+ *
+ * Layout: group header (level 1), then each subgroup header (level 2) with its
+ * accounts, then the group's accounts that have no subgroup. A detail row sits
+ * one level below its header, plus its depth in the vendor's own account tree.
  *
  * @param {object} opts
  * @param {string} opts.sourceSystem - 'xero' | 'quickbooks'
- * @param {Array<{ title: string, rows: Array, summary: { debit: number, credit: number } | null }>} opts.sections
+ * @param {Array<{ title: string, rows: Array }>} opts.sections - parsed trial balance
  * @param {Map<string, object>} opts.dimensionById - dimension data by vendor account id
+ * @param {(dimension: object) => [string, string?]|undefined} opts.classify - [groupKey, subgroupKey?] for an account
  * @param {(dimension: object) => string|undefined} opts.fallbackDrCr - side for a zero-balance account
  * @param {(dimension: object) => object} opts.vendorSpecific - extra _vendorSpecific fields for a detail row
- * @returns {object[]} canonical Account rows in report order
+ * @returns {object[]} canonical Account rows
  */
-function buildAccountRows({ sourceSystem, sections, dimensionById, fallbackDrCr, vendorSpecific }) {
+function buildAccountRows({ sourceSystem, sections, dimensionById, classify, fallbackDrCr, vendorSpecific }) {
   const detailOptions = { sourceSystem, fallbackDrCr, vendorSpecific };
 
-  const rows = sections.flatMap((section, i) => [
-    buildHeaderRow(section, i + 1, sourceSystem),
-    ...section.rows.map((row) =>
-      buildDetailRow(row, dimensionById.get(row.accountId) || {}, detailOptions)
-    ),
-  ]);
+  const details = sections.flatMap((section) =>
+    section.rows.map((row) => ({
+      row,
+      dimension: dimensionById.get(row.accountId) || {},
+      reportSection: section.title,
+    }))
+  );
+  const groups = bucketByGroup(details, classify);
+
+  const detailRows = (members, headerLevel) =>
+    members.map((m) =>
+      buildDetailRow({ ...m, level: headerLevel + 1 + (m.dimension.depth || 0) }, detailOptions)
+    );
+
+  const rows = [];
+  for (const groupKey of GROUP_ORDER) {
+    const subgroups = groups.get(groupKey);
+    if (!subgroups) continue;
+
+    const all = [...subgroups.values()].flat().map((m) => m.row);
+    rows.push(
+      buildHeaderRow({
+        id: `header:${groupKey}`,
+        definition: groupDefinition(groupKey),
+        level: 1,
+        members: all,
+        sourceSystem,
+        vendorSpecific: { groupKey },
+      })
+    );
+
+    for (const sub of subgroupsOf(groupKey)) {
+      const members = subgroups.get(sub.key);
+      if (!members) continue;
+      rows.push(
+        buildHeaderRow({
+          id: `header:${sub.key}`,
+          definition: sub,
+          level: 2,
+          members: members.map((m) => m.row),
+          sourceSystem,
+          vendorSpecific: { groupKey, subgroupKey: sub.key },
+        }),
+        ...detailRows(members, 2)
+      );
+    }
+
+    rows.push(...detailRows(subgroups.get('') || [], 1));
+  }
 
   return ensureUniqueIds(rows);
 }
