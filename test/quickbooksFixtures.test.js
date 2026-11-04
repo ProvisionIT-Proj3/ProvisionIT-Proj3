@@ -53,6 +53,8 @@ test("official sample: Account entities map to dimension data; a missing AcctNum
     name: "Canadian Accounts Receivable",
     type: "Accounts Receivable",
     classification: "Asset",
+    depth: 0,
+    parentId: undefined,
     taxCode: undefined, // US sample: TaxCodeRef is only on AU/GB/CA accounts
   });
 });
@@ -73,14 +75,26 @@ test("AU company: rows add up to the report's own GrandTotal", () => {
   assert.equal(round2(rows.reduce((sum, r) => sum + r.credit, 0)), total.credit); // 64010.00
 });
 
-test("AU company: canonical rows balance, with one header that nets to zero", () => {
+test("AU company: headers come from account type and the detail rows balance", () => {
   const accounts = buildQuickbooksAccounts(AU_ACCOUNTS, AU_TRIAL_BALANCE, AU_TAX_CODES);
-  const [header, ...details] = accounts;
+  const headers = accounts.filter((a) => a.isHeader);
+  const details = accounts.filter((a) => !a.isHeader);
 
-  assert.equal(accounts.filter((a) => a.isHeader).length, 1);
-  assert.equal(header.name, "Accounts");
-  assert.equal(header.value, 0);
-  assert.equal(header.drCr, undefined);
+  assert.deepEqual(
+    headers.map((h) => [h.code, h.level, h.drCr, h.value]),
+    [
+      ["1-0000", 1, "Dr", 29470.5],
+      ["1-1000", 2, "Dr", 25270.5],
+      ["1-4000", 2, "Dr", 4200],
+      ["2-0000", 1, "Cr", 4270], // 3150 + 1240 less the card's 120 debit balance
+      ["2-1000", 2, "Cr", 4270],
+      ["3-0000", 1, "Cr", 14240],
+      ["4-0000", 1, "Cr", 45500],
+      ["5-0000", 1, "Dr", 21000],
+      ["6-0000", 1, "Dr", 13539.5],
+      ["UNCLASSIFIED", 1, undefined, 0], // the id-less, zero-balance row the Account list doesn't know
+    ]
+  );
 
   // 12 accounts on the trial balance + the one not in the Account list; Travel (73) has no balance row.
   assert.equal(details.length, 13);

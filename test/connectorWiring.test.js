@@ -54,7 +54,7 @@ test("QuickBooks sync: fetches accounts, trial balance and tax codes, and stores
 
   const result = await dataService.syncAccounts(QBO_CONN);
 
-  assert.equal(result.data.saved, 14); // 1 header + 13 detail rows
+  assert.equal(result.data.saved, 23); // 10 headers + 13 detail rows
   assert.equal(result.data.reportDate, "2026-06-30"); // from the report, not the server clock
   assert.equal(saved.length, 1);
   assert.equal(saved[0].connectionId, QBO_CONN);
@@ -73,7 +73,7 @@ test("QuickBooks sync: fetches accounts, trial balance and tax codes, and stores
 test("Xero live trial balance: canonical rows with balances and the report's own date", async () => {
   const result = await dataService.getTrialBalance(XERO_CONN);
 
-  assert.equal(result.data.length, 24); // 5 section headers + 19 accounts, no grand-total header
+  assert.equal(result.data.length, 26); // 7 headers (Class/Type groups) + 19 accounts, no grand-total header
   assert.equal(result.meta.reportDate, "2019-04-24");
   assert.ok(result.data.every((a) => a._vendorSpecific === undefined));
 

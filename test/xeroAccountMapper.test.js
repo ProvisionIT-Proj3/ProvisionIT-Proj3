@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildXeroAccounts,
+  classifyXeroAccount,
   getXeroReportDate,
   parseTrialBalanceReport,
 } = require("../src/mappers/xero/accountMapper");
@@ -79,17 +80,19 @@ test("official sample: balance-sheet accounts carry their as-at balance, not the
   check("400", "Cr", 1020.22);
 });
 
-test("official sample: headers net their section; detail rows total to the grand total on each side", () => {
+test("official sample: headers are built from Class/Type and net their members; detail rows total to the grand total on each side", () => {
   const accounts = buildXeroAccounts(ACCOUNTS, OFFICIAL_TRIAL_BALANCE);
 
   assert.deepEqual(
-    accounts.filter((a) => a.isHeader).map((h) => [h.code, h.name, h.drCr, h.value]),
+    accounts.filter((a) => a.isHeader).map((h) => [h.code, h.name, h.level, h.drCr, h.value]),
     [
-      ["HDR-1", "Revenue", "Cr", 2100.22],
-      ["HDR-2", "Expenses", "Dr", 120],
-      ["HDR-3", "Assets", "Dr", 45601.51],
-      ["HDR-4", "Liabilities", "Cr", 12749.6],
-      ["HDR-5", "Equity", "Cr", 30871.69],
+      ["1-0000", "Assets", 1, "Dr", 45601.51],
+      ["1-1000", "Current Assets", 2, "Dr", 45601.51],
+      ["2-0000", "Liabilities", 1, "Cr", 12749.6],
+      ["2-1000", "Current Liabilities", 2, "Cr", 12749.6],
+      ["3-0000", "Equity", 1, "Cr", 30871.69],
+      ["4-0000", "Income", 1, "Cr", 2100.22],
+      ["6-0000", "Expenses", 1, "Dr", 120],
     ]
   );
 
@@ -165,25 +168,29 @@ test("without a Header row the YTD columns are still used", () => {
 
 test("negative amounts flip the side instead of reporting a zero balance", () => {
   const raw = report([["Assets", [accountRow("Bank", BANK_ID, "-50.00", ""), accountRow("Loan", "acc-x", "", "(75.00)")]]]);
-  const [header, bank, loan] = buildXeroAccounts(ACCOUNTS, raw);
+  const rows = buildXeroAccounts(ACCOUNTS, raw);
+  const [bank, loan] = [BANK_ID, "acc-x"].map((id) => rows.find((r) => r.id === id));
+  const header = (id) => rows.find((r) => r.id === id);
 
   assert.equal(bank.drCr, "Cr");
   assert.equal(bank.value, 50);
   assert.equal(loan.drCr, "Dr");
   assert.equal(loan.value, 75);
-  // Header nets the section: -50 debit, -75 credit -> 25 Dr.
-  assert.equal(header.drCr, "Dr");
-  assert.equal(header.value, 25);
+  // Each header nets its own members: Assets holds the bank (-50 debit), Unclassified the unmatched loan (-75 credit).
+  assert.equal(header("header:asset").drCr, "Cr");
+  assert.equal(header("header:asset").value, 50);
+  assert.equal(header("header:unclassified").drCr, "Dr");
+  assert.equal(header("header:unclassified").value, 75);
 });
 
-test("zero-balance accounts fall back to the Class-based side; zero-balance headers have none", () => {
+test("zero-balance accounts fall back to the Class-based side; zero-balance headers take their group's normal side", () => {
   const raw = report([["Assets", [accountRow("Bank", BANK_ID, "", "")]]]);
-  const [header, bank] = buildXeroAccounts(ACCOUNTS, raw);
+  const rows = buildXeroAccounts(ACCOUNTS, raw);
+  const bank = rows.find((r) => !r.isHeader);
 
   assert.equal(bank.drCr, "Dr"); // Class ASSET
   assert.equal(bank.value, 0);
-  assert.equal(header.drCr, undefined);
-  assert.equal(header.value, 0);
+  assert.ok(rows.filter((r) => r.isHeader).every((h) => h.drCr === "Dr" && h.value === 0));
 });
 
 test("amounts with thousands separators parse; garbage amounts throw rather than become 0", () => {
@@ -201,5 +208,18 @@ test("repeated section titles and unmatched names get unique ids", () => {
   ]);
   const ids = buildXeroAccounts([], raw).map((a) => a.id);
 
-  assert.deepEqual(ids, ["header:Revenue", "unmatched:Other", "unmatched:Other#2", "header:Revenue#2"]);
+  assert.deepEqual(ids, ["header:unclassified", "unmatched:Other", "unmatched:Other#2"]);
+});
+
+test("classifyXeroAccount uses Type, falls back to Class, else is unclassified", () => {
+  assert.deepEqual(classifyXeroAccount({ type: "TERMLIAB", class: "LIABILITY" }), ["liability", "nonCurrentLiability"]);
+  assert.deepEqual(classifyXeroAccount({ type: "DIRECTCOSTS", class: "EXPENSE" }), ["costOfSales"]);
+  assert.deepEqual(classifyXeroAccount({ type: "OTHERINCOME", class: "REVENUE" }), ["otherIncome"]);
+  assert.deepEqual(classifyXeroAccount({ type: "BRAND_NEW_TYPE", class: "ASSET" }), ["asset"]);
+  assert.equal(classifyXeroAccount({}), undefined);
+});
+
+test("every Type in the sample GET /Accounts response is placed under a real group", () => {
+  const unplaced = ACCOUNTS.filter((a) => !classifyXeroAccount({ type: a.Type, class: a.Class }));
+  assert.deepEqual(unplaced, []);
 });

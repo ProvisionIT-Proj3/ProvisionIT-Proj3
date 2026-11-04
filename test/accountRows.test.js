@@ -58,8 +58,8 @@ test("netBalance picks the side by the rounded net, so float noise cannot choose
 
 const qboData = (name, id, debit, credit) => ({ type: "Data", ColData: [{ value: name, id }, { value: debit }, { value: credit }] });
 
-test("QuickBooks: a section header uses the section's Summary, not the sum of the rows kept", () => {
-  // The Summary covers more than the rows we kept (here 100 + 40 debit), so the two differ.
+test("QuickBooks: a header is totalled from the rows kept, ignoring the section's own Summary", () => {
+  // The vendor's Summary describes the vendor's section, not our group, so it plays no part.
   const report = {
     Rows: {
       Row: [
@@ -73,9 +73,9 @@ test("QuickBooks: a section header uses the section's Summary, not the sum of th
     },
   };
   const [header, checking] = quickbooks.buildQuickbooksAccounts([], report);
-  assert.equal(header.value, 140);
+  assert.equal(header.value, 100);
   assert.equal(header.drCr, "Dr");
-  assert.equal(checking.value, 100); // the detail row is unaffected
+  assert.equal(checking.value, 100);
 });
 
 test("QuickBooks: a section without a Summary is totalled from its rows", () => {
@@ -111,10 +111,10 @@ const xeroReport = (rows) => ({
   ],
 });
 
-test("Xero: a section header uses the SummaryRow, not the sum of the rows kept", () => {
+test("Xero: a header is totalled from the rows kept, ignoring any SummaryRow", () => {
   const raw = xeroReport([xeroRow("Bank", "b1", "100.00", ""), xeroSummary("140.00", "")]);
   const [header, bank] = xero.buildXeroAccounts([], raw);
-  assert.equal(header.value, 140);
+  assert.equal(header.value, 100);
   assert.equal(header.drCr, "Dr");
   assert.equal(bank.value, 100);
 });
@@ -125,14 +125,85 @@ test("Xero: a SummaryRow too short to reach the balance columns is ignored", () 
   assert.equal(header.value, 100);
 });
 
-test("buildAccountRows: a section whose summary nets to zero has no side, even with rows", () => {
-  const [header] = buildAccountRows({
+const buildOne = (dimension, classify) =>
+  buildAccountRows({
     sourceSystem: "xero",
-    sections: [{ title: "S", rows: [{ accountId: "a", name: "A", debit: 5, credit: 0 }], summary: { debit: 9, credit: 9 } }],
-    dimensionById: new Map(),
+    sections: [{ title: "S", rows: [{ accountId: "a", name: "A", debit: 5, credit: 0 }] }],
+    dimensionById: new Map([["a", { id: "a", code: "1", name: "A", ...dimension }]]),
+    classify,
     fallbackDrCr: () => "Dr",
     vendorSpecific: () => ({}),
   });
-  assert.equal(header.value, 0);
-  assert.equal(header.drCr, undefined);
+
+test("buildAccountRows: group, subgroup and detail rows nest with MYOB-style codes and levels", () => {
+  const rows = buildOne({}, () => ["asset", "fixedAsset"]);
+
+  assert.deepEqual(
+    rows.map((r) => [r.code, r.name, r.type, r.isHeader, r.level, r.drCr, r.value]),
+    [
+      ["1-0000", "Assets", "Asset", true, 1, "Dr", 5],
+      ["1-4000", "Fixed Assets", "Asset", true, 2, "Dr", 5],
+      ["1", "A", undefined, false, 3, "Dr", 5],
+    ]
+  );
+});
+
+test("buildAccountRows: a group with no subgroup puts its accounts one level under the group header", () => {
+  const rows = buildOne({}, () => ["equity"]);
+  assert.deepEqual(rows.map((r) => [r.name, r.level]), [["Equity", 1], ["A", 2]]);
+});
+
+test("buildAccountRows: an unknown group or subgroup is handled, not dropped", () => {
+  const unknownGroup = buildOne({}, () => ["nonsense"]);
+  assert.deepEqual(unknownGroup.map((r) => [r.code, r.level]), [["UNCLASSIFIED", 1], ["1", 2]]);
+
+  const wrongParent = buildOne({}, () => ["asset", "currentLiability"]); // subgroup belongs to liability
+  assert.deepEqual(wrongParent.map((r) => [r.name, r.level]), [["Assets", 1], ["A", 2]]);
+
+  const none = buildOne({}, () => undefined);
+  assert.equal(none[0].id, "header:unclassified");
+});
+
+test("buildAccountRows: an account's depth in the vendor tree pushes its level down", () => {
+  const rows = buildOne({ depth: 2 }, () => ["expense"]);
+  assert.equal(rows.at(-1).level, 4); // header 1 + 1 + depth 2
+});
+
+test("buildAccountRows: groups come out in chart order whatever order the report lists them", () => {
+  const rows = buildAccountRows({
+    sourceSystem: "xero",
+    sections: [{ title: "S", rows: [
+      { accountId: "e", name: "E", debit: 1, credit: 0 },
+      { accountId: "a", name: "A", debit: 2, credit: 0 },
+      { accountId: "x", name: "X", debit: 3, credit: 0 },
+    ] }],
+    dimensionById: new Map([
+      ["e", { id: "e", name: "E", group: ["expense"] }],
+      ["a", { id: "a", name: "A", group: ["asset", "currentAsset"] }],
+    ]),
+    classify: (d) => d.group,
+    fallbackDrCr: () => undefined,
+    vendorSpecific: () => ({}),
+  });
+
+  assert.deepEqual(
+    rows.filter((r) => r.isHeader).map((r) => r.code),
+    ["1-0000", "1-1000", "6-0000", "UNCLASSIFIED"]
+  );
+});
+
+test("buildAccountRows: a header netting to zero takes its group's normal side; an unclassified one has none", () => {
+  const net = (classify) =>
+    buildAccountRows({
+      sourceSystem: "xero",
+      sections: [{ title: "S", rows: [{ accountId: "a", name: "A", debit: 5, credit: 5 }] }],
+      dimensionById: new Map(),
+      classify,
+      fallbackDrCr: () => "Dr",
+      vendorSpecific: () => ({}),
+    })[0];
+
+  assert.equal(net(() => ["liability"]).drCr, "Cr");
+  assert.equal(net(() => undefined).drCr, undefined);
+  assert.equal(net(() => ["liability"]).value, 0);
 });

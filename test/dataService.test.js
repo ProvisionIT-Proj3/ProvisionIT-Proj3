@@ -76,10 +76,10 @@ test("syncAccounts stores canonical account rows, not raw Xero fields", async ()
   assert.equal(saved[0].reportDate, "2026-06-30");
   assert.equal(result.data.saved, 2);
 
-  const [header, detail] = saved[0].accounts; // synthesized section header + the one detail row
+  const [header, detail] = saved[0].accounts; // the synthesized Income header + the one detail row
 
   assert.equal(header.isHeader, true);
-  assert.equal(header.name, "Revenue");
+  assert.equal(header.name, "Income");
   assert.equal(header.sourceSystem, "xero");
 
   assert.equal(detail.isHeader, false);
@@ -103,7 +103,7 @@ test("getTrialBalance returns a flat canonical list, not the raw Xero report", a
 
   const [header, detail] = result.data;
   assert.equal(header.isHeader, true);
-  assert.equal(header.name, "Revenue");
+  assert.equal(header.name, "Income");
   assert.equal(detail.name, "Sales");
   assert.equal(detail.drCr, "Cr");
   assert.equal(detail.value, 500);
