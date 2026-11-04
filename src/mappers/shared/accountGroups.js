@@ -1,13 +1,3 @@
-/**
- * Header rows for the canonical account list.
- *
- * Neither Xero nor QuickBooks has header accounts, so they are synthesised, but
- * from each account's own class/type rather than from the report's section
- * titles. Each vendor mapper classifies a detail account into one of the groups
- * below; the codes, names and types follow the MYOB layout of the Accounts List
- * export (1-0000 Assets, 1-1000 Current Assets, ...), so the output lines up
- * with it. They are a scheme, not data from either API: change them here.
- */
 
 const GROUPS = {
   asset: { code: '1-0000', name: 'Assets', type: 'Asset', normalSide: 'Dr' },

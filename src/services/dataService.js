@@ -64,6 +64,23 @@ async function getAccounts(connectionId, query = {}) {
   };
 }
 
+/**
+ * Every stored account in report order, unpaginated, with what a file export
+ * needs to label it. Same canonical rows as getAccounts.
+ */
+async function getAccountsForExport(connectionId) {
+  const connection = await persistence.getConnectionById(connectionId);
+  if (!connection) throw notFound("Accounting connection not found.");
+
+  const rows = await persistence.getAccountsByConnection(connectionId);
+
+  return {
+    accounts: toCanonicalList("account", rows.map(toCamelCase), { sourceSystem: connection.platform }),
+    companyName: connection.company_name ?? null,
+    reportDate: rows.length ? rows[0].report_date : null,
+  };
+}
+
 // Connectors read the as-of date off the report itself, so it is the
 // company's date, not the server's. Today's UTC date is only a fallback for a
 // connector or report that doesn't provide one.
@@ -111,4 +128,4 @@ async function getTrialBalance(connectionId) {
   return { data, meta: { live: true, reportDate, fetchedAt: new Date().toISOString() } };
 }
 
-module.exports = { getAccounts, syncAccounts, getTrialBalance };
+module.exports = { getAccounts, getAccountsForExport, syncAccounts, getTrialBalance };

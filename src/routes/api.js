@@ -4,6 +4,7 @@
 const express = require("express");
 const router = express.Router();
 const dataService = require("../services/dataService");
+const { accountsToCsv } = require("../export/accountsCsv");
 const persistence = require("../persistence");
 const { requireConnectionId, parsePagination } = require("../services/validation");
 const { createAuditLogger } = require("../security/auditLogger");
@@ -57,13 +58,25 @@ function loadConnectionId(req, res, next) {
 }
 
 // Stored accounts, in report order. Optional ?page= and ?pageSize=.
+// ?format=csv returns every account as a CSV file in the MYOB Accounts List
+// layout instead (paging does not apply); add ?preamble=true for its title lines.
 router.get("/accounts", readAccounting, loadConnectionId, requireConnectionAccess, async (req, res, next) => {
   try {
+    if (req.query.format === "csv") return await sendAccountsCsv(req, res);
     res.json(await dataService.getAccounts(req.connectionId, req.query));
   } catch (error) {
     next(error);
   }
 });
+
+async function sendAccountsCsv(req, res) {
+  const { accounts, companyName, reportDate } = await dataService.getAccountsForExport(req.connectionId);
+  const csv = accountsToCsv(accounts, { preamble: req.query.preamble === "true", companyName, reportDate });
+
+  res.type("text/csv");
+  res.set("Content-Disposition", `attachment; filename="accounts-${/^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? reportDate : "export"}.csv"`);
+  res.send(csv);
+}
 
 // Fetch accounts from the accounting system and store them. Admin only.
 router.post("/sync", syncAccounting, async (req, res, next) => {
